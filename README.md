@@ -1,10 +1,4 @@
-<<<<<<< HEAD
-# Hydra
-
-## Licence
-Ce projet est distribué sous licence MIT. Pour plus de détails, voir le fichier [LICENSE](./LICENSE).
-=======
-# **CHAT Typique**
+# **Hydra**
 
 ![Node.js](https://img.shields.io/badge/Node.js-v16+-green.svg) ![Discord.js](https://img.shields.io/badge/Discord.js-v14-blue.svg)
 
@@ -143,4 +137,3 @@ Quelques idées pour développer ce bot à l'avenir :
 - Créer des rapports d’activités hebdomadaires pour les administrateurs.
 
 Si vous avez des suggestions, vous pouvez [ouvrir une issue ici](https://git.gitpushf.uk/SeguraS/Bot_CHAT_Typique/issues).
->>>>>>> 7b2f786 (10/06/2025)
