@@ -1,0 +1,91 @@
+const { ActivityType } = require('discord.js');
+const { serverConfigs } = require('../data/serverconfigs.js');
+
+module.exports = {
+    name: 'ready', // Nom de l'événement
+    once: false, // true si l'événement ne se déclenche qu'une fois
+    execute(client) {
+        console.log(`✅ Bot connecté en tant que ${client.user.tag}`);
+
+        // Liste des statuts à alterner
+        const statuses = [
+            { name: 'des chats mignons 🐱', type: ActivityType.Watching },
+            { name: 'son créateur, Shelby S.', type: ActivityType.Watching },
+            { name: '/help !', type: ActivityType.Listening },
+        ];
+
+        let i = 0;
+        setInterval(() => {
+            const status = statuses[i];
+            client.user.setPresence({
+                activities: [status],
+                status: 'online', // Statut global : 'online' | 'idle' | 'dnd' | 'invisible'
+            });
+            i = (i + 1) % statuses.length; // Boucle sur les statuts
+        }, 10000); // Changement de statut toutes les 10 secondes
+
+        // Stockage des intervals en cours
+        const intervals = new Map();
+
+        // Fonction : Synchroniser les messages automatiques
+        const syncAutoMessages = (guildId) => {
+            const config = serverConfigs.get(guildId);
+
+            if (!config) return;
+            const { autoMessageChannel, autoMessageContent, autoMessageInterval, autoMessageEnabled } = config;
+
+            // Arrêter l'intervalle existant en cas de désactivation
+            if (!autoMessageEnabled || !autoMessageChannel || !autoMessageContent || !autoMessageInterval) {
+                if (intervals.has(guildId)) {
+                    clearInterval(intervals.get(guildId));
+                    intervals.delete(guildId);
+                    console.log(`❌ Les messages automatiques pour ${guildId} ont été désactivés.`);
+                }
+                return;
+            }
+
+            // Si un intervalle existe déjà, ne pas en recréer un
+            if (intervals.has(guildId)) return;
+
+            // Créer un nouvel intervalle pour le serveur configuré
+            client.channels.fetch(autoMessageChannel)
+                .then((channel) => {
+                    if (!channel) {
+                        console.warn(`⚠️ Le canal (${autoMessageChannel}) pour ${guildId} est introuvable.`);
+                        return;
+                    }
+
+                    console.log(`▶️ Lancement des messages automatiques pour ${guildId}.`);
+                    const intervalId = setInterval(() => {
+                        channel.send(autoMessageContent).catch((err) => {
+                            console.error(`❌ Erreur d'envoi pour ${guildId} :`, err);
+                        });
+                    }, autoMessageInterval);
+
+                    intervals.set(guildId, intervalId);
+                })
+                .catch((err) => {
+                    console.error(`❌ Erreur de récupération du canal ${autoMessageChannel} pour ${guildId} :`, err);
+                });
+        };
+
+        // Lancer les messages automatiques pour tous les serveurs configurés au démarrage
+        serverConfigs.forEach((_, guildId) => syncAutoMessages(guildId));
+
+        // Réagir dynamiquement aux changements de configuration
+        client.on('configUpdate', (guildId) => {
+            console.log(`🔄 Mise à jour de la configuration pour ${guildId}.`);
+            syncAutoMessages(guildId);
+        });
+
+        // Nettoyer les intervalles si un serveur est supprimé
+        client.on('guildDelete', (guild) => {
+            const intervalId = intervals.get(guild.id);
+            if (intervalId) {
+                clearInterval(intervalId);
+                intervals.delete(guild.id);
+                console.log(`🚮 Intervalle des messages automatiques arrêté pour le serveur ${guild.id}.`);
+            }
+        });
+    },
+};

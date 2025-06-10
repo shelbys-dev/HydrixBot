@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # ---> Node
 # Logs
 logs
@@ -130,3 +131,7 @@ dist
 .yarn/install-state.gz
 .pnp.*
 
+=======
+node_modules/
+.env
+>>>>>>> 7b2f786 (10/06/2025)
