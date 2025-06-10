@@ -15,7 +15,8 @@ module.exports = {
             .addFields(
                 { name: 'Commandes', value: commands.join('\n') }
             )
-            .setFooter({ text: 'Bot codé par Shelby S. ! 🚀', iconURL: 'https://gem-chat-typique.fr/wp-content/uploads/2025/01/icon.png' })
+            .setThumbnail(interaction.client.user.displayAvatarURL({ dynamic: true, size: 1024 })) // Icône du bot
+            .setFooter({ text: 'Bot codé par Shelby S. ! 🚀' })
             .setTimestamp();
 
         // Répondre à l'utilisateur avec l'embed
