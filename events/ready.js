@@ -6,12 +6,14 @@ module.exports = {
     once: false, // true si l'événement ne se déclenche qu'une fois
     execute(client) {
         console.log(`✅ Bot connecté en tant que ${client.user.tag}`);
+        const totalMembers = client.guilds.cache.reduce((acc, guild) => acc + guild.memberCount, 0);
 
         // Liste des statuts à alterner
         const statuses = [
             { name: 'des chats mignons 🐱', type: ActivityType.Watching },
-            { name: 'son créateur, Shelby S.', type: ActivityType.Watching },
-            { name: '/help !', type: ActivityType.Listening },
+            { name: 'son créateur, Shelby S.', type: ActivityType.Listening },
+            { name: '/help !', type: ActivityType.Playing },
+            { name: `${totalMembers} membres 🤖`, type: ActivityType.Watching },
         ];
 
         let i = 0;
