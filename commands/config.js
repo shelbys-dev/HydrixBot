@@ -105,6 +105,13 @@ module.exports = {
                 const name = interaction.options.getString('nom');
                 const url = interaction.options.getString('url');
 
+                if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+                    return interaction.reply({
+                        content: "❌ Vous n'avez pas les permissions nécessaires pour exécuter cette commande.",
+                        ephemeral: true,
+                    });
+                }
+
                 // Valide l'URL
                 if (!/^https?:\/\/.+\..+/i.test(url)) {
                     return interaction.reply({
@@ -135,6 +142,13 @@ module.exports = {
 
             if (subcommand === 'automessage') {
                 // ------------------- AUTOMESSAGE ------------------- //
+                if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+                    return interaction.reply({
+                        content: "❌ Vous n'avez pas les permissions nécessaires pour exécuter cette commande.",
+                        ephemeral: true,
+                    });
+                }
+
                 const channel = interaction.options.getChannel('channel');
                 const message = interaction.options.getString('message');
                 const interval = interaction.options.getInteger('interval') * 1000; // ms
