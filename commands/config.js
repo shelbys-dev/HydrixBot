@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, PermissionsBitField } = require('discord.js');
-const { serverConfigs, saveConfigs } = require('../data/serverconfigs.js');
+const { serverConfigs, saveConfigs, updateServerConfig } = require('../data/serverconfigs.js');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -46,6 +46,23 @@ module.exports = {
                         .setName('interval')
                         .setDescription('Intervalle entre les messages (en secondes).')
                         .setRequired(true)
+                )
+        )
+        .addSubcommand((subcommand) =>
+            subcommand
+                .setName("roles")
+                .setDescription("Configurer les noms des rôles Admin et Mute")
+                .addStringOption((option) =>
+                    option
+                        .setName("admin_role")
+                        .setDescription("Nom du rôle d'admin du serveur")
+                        .setRequired(false)
+                )
+                .addStringOption((option) =>
+                    option
+                        .setName("mute_role")
+                        .setDescription("Nom du rôle mute du serveur")
+                        .setRequired(false)
                 )
         ),
     async execute(interaction) {
@@ -180,6 +197,52 @@ module.exports = {
 
                 // Notifie l'événement pour démarrer ou redémarrer le système
                 interaction.client.emit('configUpdate', guildId);
+            }
+
+            if (subcommand === 'roles') {
+                // ------------------- roles ------------------- //
+                if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+                    return interaction.reply({
+                        content: "❌ Vous n'avez pas les permissions nécessaires pour exécuter cette commande.",
+                        ephemeral: true,
+                    });
+                }
+
+                const serverId = interaction.guild.id;
+                const adminRoleName = interaction.options.getString("admin_role");
+                const muteRoleName = interaction.options.getString("mute_role");
+
+                const guildId = guild.id;
+
+                // Récupère ou initialise config serveur
+                if (!serverConfigs.has(guildId)) {
+                    serverConfigs.set(guildId, { links: [] });
+                }
+
+                // Mettre à jour les rôles si des valeurs sont fournies
+                if (adminRoleName) {
+                    updateServerConfig(serverId, "adminRoleName", adminRoleName);
+                }
+
+                if (muteRoleName) {
+                    updateServerConfig(serverId, "mutedRoleName", muteRoleName);
+                }
+
+                const config = serverConfigs.get(guildId);
+
+                // Mettre à jour la configuration
+                config.adminRoleName = adminRoleName || config.adminRoleName || "Admin";
+                config.muteRoleName = muteRoleName || config.mutedRoleName || "Muted";
+
+                saveConfigs();
+
+                // Répondre à l'utilisateur
+                return interaction.reply({
+                    content: `✅ Configuration mise à jour :
+                    - Rôle Admin : ${adminRoleName || config.adminRoleName || "Aucun changement"}
+                    - Rôle Mute : ${muteRoleName || config.mutedRoleName || "Aucun changement"}`,
+                    ephemeral: true, // Invisible pour les autres utilisateurs
+                });
             }
         } catch (error) {
             console.error(`❌ Une erreur est survenue :`, error);

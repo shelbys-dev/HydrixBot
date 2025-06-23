@@ -1,15 +1,5 @@
 const { EmbedBuilder } = require("discord.js");
-
-// Configuration par serveur (Map ou base de données pour une personnalisation avancée)
-const serverConfigs = new Map(); // Ex: Map<guildId, { mutedRoleName, adminRoleName, flagEmoji, reportThreshold }>
-// Configuration de Shelbydev :
-serverConfigs.set("766660674453110814", {
-    mutedRoleName: "Muted",
-    adminRoleName: "「🛑」ᴀᴅᴍɪɴ",
-    flagEmoji: "🏳️",
-    reportThreshold: 4,
-    reportResetTime: 10 * 60 * 1000, // Temps en ms
-});
+const { serverConfigs } = require('../data/serverconfigs.js');
 
 // Stockage temporaire des signalements
 const reactionCounts = new Map(); // Exemple: Map<messageId, { count, users, timeout }>

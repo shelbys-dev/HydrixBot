@@ -15,6 +15,8 @@ function loadConfigs() {
             Object.entries(jsonData).map(([guildId, config]) => [
                 guildId,
                 {
+                    adminRoleName: config.adminRoleName || 'Admin',
+                    mutedRoleName: config.mutedRoleName || 'Muted',
                     links: config.links || [],
                     autoMessageChannel: config.autoMessageChannel || null,
                     autoMessageContent: config.autoMessageContent || null,
@@ -31,6 +33,8 @@ function saveConfigs() {
         Array.from(serverConfigs.entries()).map(([guildId, config]) => [
             guildId,
             {
+                adminRoleName: config.adminRoleName || 'Admin',
+                mutedRoleName: config.mutedRoleName || 'Muted',
                 links: config.links || [],
                 autoMessageChannel: config.autoMessageChannel || null,
                 autoMessageContent: config.autoMessageContent || null,
@@ -42,6 +46,15 @@ function saveConfigs() {
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(jsonData, null, 2), 'utf-8');
 }
 
+// Mettre à jour une configuration spécifique
+function updateServerConfig(serverId, key, value) {
+    const config = serverConfigs.get(serverId) || {};
+    config[key] = value;
+    serverConfigs.set(serverId, config);
+
+    saveConfigs();
+}
+
 // Charger les données au démarrage
 loadConfigs();
 
@@ -49,4 +62,5 @@ loadConfigs();
 module.exports = {
     serverConfigs,
     saveConfigs,
+    updateServerConfig
 };
