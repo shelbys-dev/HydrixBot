@@ -63,5 +63,22 @@ for (const file of eventFiles) {
     }
 }
 
+const { loadReactionCounts, saveReactionCounts } = require('./data/reactioncount.js');
+
+// Charger les données au démarrage
+loadReactionCounts();
+
+process.on('SIGINT', () => {
+    // Sauvegarder les données en cas de fermeture avec Ctrl + C
+    saveReactionCounts();
+    process.exit();
+});
+
+process.on('exit', (code) => {
+    console.log(`Processus terminé avec le code : ${code}. Sauvegarde des données avant de quitter.`);
+    saveReactionCounts();
+});
+
+
 // Connexion du bot
 client.login(process.env.TOKEN);

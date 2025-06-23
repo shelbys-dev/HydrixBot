@@ -1,8 +1,6 @@
 const { EmbedBuilder } = require("discord.js");
 const { serverConfigs } = require('../data/serverconfigs.js');
-
-// Stockage temporaire des signalements
-const reactionCounts = new Map(); // Exemple: Map<messageId, { count, users, timeout }>
+const { reactionCounts, saveReactionCounts } = require('../data/reactionCount.js');
 
 // Cache pour le rôle admin supprimé lors d'un mute
 const adminRoleCache = new Map();
@@ -30,6 +28,8 @@ module.exports = {
         const reportThreshold = config.reportThreshold || 5;
         const mutedRoleName = config.mutedRoleName || "mute";
         const adminRoleName = config.adminRoleName || "admin";
+        const reportResetTime = config.reportResetTime || 10 * 60 * 1000; // 10 minutes par défaut
+        const logChannel = guild.channels.cache.find((ch) => ch.name.toLowerCase() === "logs");
 
         // Vérifier si l'emoji correspond au drapeau défini
         if (reaction.emoji.name === flagEmoji) {
@@ -42,19 +42,30 @@ module.exports = {
             // Obtenir ou initialiser le compteur de réactions
             const counts = reactionCounts.get(message.id) || { count: 0, users: new Set() };
 
-            if (!counts.timeout) {
-                counts.timeout = setTimeout(() => {
-                    reactionCounts.delete(message.id);
-                }, config.reportResetTime || 10 * 60 * 1000);
-            }
-
             // Éviter les doublons
             if (!counts.users.has(user.id)) {
                 counts.count++;
                 counts.users.add(user.id);
                 reactionCounts.set(message.id, counts);
 
-                console.log(`Signalement ajouté pour le message ${message.id}. Total : ${counts.count}.`);
+                console.log(`Signalement ajouté pour le message ${message.id}. Total : ${counts.count}.`, reactionCounts);
+
+                if (logChannel) {
+                    // Log de l'intervention
+                    const embed = new EmbedBuilder()
+                        .setColor("f08f19") // Orange
+                        .setTitle("🚨 Signalement ajouté 🚨")
+                        .setDescription(`Le message de ${member.user.tag} pose problème.`)
+                        .addFields(
+                            { name: "Message", value: `${message.content}` || "Aucun contenu trouvé" },
+                            { name: "Total des signalements", value: `${counts.count}` }
+                        )
+                        .setTimestamp();
+                    logChannel.send({ embeds: [embed] });
+                }
+
+                // Sauvegarde dans le fichier à chaque mise à jour
+                saveReactionCounts();
 
                 // Supprimer la réaction pour garder l'anonymat
                 try {
@@ -76,7 +87,6 @@ module.exports = {
                         return;
                     }
 
-                    const logChannel = guild.channels.cache.find((ch) => ch.name.toLowerCase() === "logs");
                     if (logChannel) {
                         // Log de l'intervention
                         const embed = new EmbedBuilder()
@@ -125,13 +135,14 @@ module.exports = {
                             }
 
                             adminRoleCache.delete(member.id);
-                        }, config.reportResetTime);
+                        }, reportResetTime);
                     } catch (error) {
                         console.error("Erreur lors de l'action de mute :", error);
                     }
 
                     reactionCounts.delete(message.id);
-                    clearTimeout(counts.timeout);
+                    // Sauvegarde après suppression du message
+                    saveReactionCounts();
                 }
             }
         }
