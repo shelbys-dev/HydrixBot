@@ -15,3 +15,4 @@ node_modules/
 # Data files
 data/serverConfigs.json
 data/reactionCounts.json
+data/userData.json
