@@ -63,6 +63,7 @@ function addXP(userId, xpGained, message) {
         message.channel.send(`🎉 **${message.author.username}** passe au **niveau ${userData[guildId][userId].level}** ! Félicitations !`);
 
         // Attribution automatique des rôles aux milestones (plus flexible)
+        /*
         const rewards = {
             5: "Actif",
             10: "VIP",
@@ -77,6 +78,7 @@ function addXP(userId, xpGained, message) {
                 message.channel.send(`🌟 **${message.author.username}** a reçu le rôle **${roleName}** !`);
             }
         }
+        */
     }
 
     // Sauvegarde des données
