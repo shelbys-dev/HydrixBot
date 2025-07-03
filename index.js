@@ -13,6 +13,7 @@ const client = new Client({
         GatewayIntentBits.GuildMessageReactions,
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildPresences,
+        GatewayIntentBits.GuildVoiceStates, // Ce champ est CRUCIAL pour détecter les changements vocaux
     ],
     partials: [
         Partials.Message,
