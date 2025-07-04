@@ -21,7 +21,7 @@ module.exports = {
             .setFooter({ text: 'Bot codé par Shelby S. ! 🚀' })
             .setTimestamp();
 
-        const message = await interaction.reply({ embeds: [clcping], fetchReply: true });
+        const message = await interaction.reply({ embeds: [clcping], fetchReply: true, ephemeral: true });
 
         const websocketPing = interaction.client.ws.ping; // Ping WebSocket
         const messagePing = message.createdTimestamp - interaction.createdTimestamp; // Ping du message
