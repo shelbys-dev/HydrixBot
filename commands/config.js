@@ -64,6 +64,17 @@ module.exports = {
                         .setDescription("Nom du rôle mute du serveur")
                         .setRequired(false)
                 )
+        )
+        .addSubcommand((subcommand) =>
+            subcommand
+                .setName("voice")
+                .setDescription("Configurer le salon de création de salons vocaux")
+                .addStringOption((option) =>
+                    option
+                        .setName("channel")
+                        .setDescription("ID du salon où les utilisateurs peuvent créer leurs salons vocaux")
+                        .setRequired(false)
+                )
         ),
     async execute(interaction) {
         const guild = interaction.guild;
@@ -241,6 +252,44 @@ module.exports = {
                     content: `✅ Configuration mise à jour :
                     - Rôle Admin : ${adminRoleName || config.adminRoleName || "Aucun changement"}
                     - Rôle Mute : ${muteRoleName || config.mutedRoleName || "Aucun changement"}`,
+                    ephemeral: true, // Invisible pour les autres utilisateurs
+                });
+            }
+            if (subcommand === 'voice') {
+                // ------------------- voice ------------------- //
+                if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+                    return interaction.reply({
+                        content: "❌ Vous n'avez pas les permissions nécessaires pour exécuter cette commande.",
+                        ephemeral: true,
+                    });
+                }
+
+                const serverId = interaction.guild.id;
+                const VoiceChannel = interaction.options.getString('channel');
+
+                const guildId = guild.id;
+
+                // Récupère ou initialise config serveur
+                if (!serverConfigs.has(guildId)) {
+                    serverConfigs.set(guildId, { links: [] });
+                }
+
+                // Mettre à jour les rôles si des valeurs sont fournies
+                if (VoiceChannel) {
+                    updateServerConfig(serverId, "VoiceChannel", VoiceChannel);
+                }
+
+                const config = serverConfigs.get(guildId);
+
+                // Mettre à jour la configuration
+                config.VoiceChannel = VoiceChannel || config.VoiceChannel || null;
+
+                saveConfigs();
+
+                // Répondre à l'utilisateur
+                return interaction.reply({
+                    content: `✅ Configuration mise à jour :
+                    - Salon vocal : ${VoiceChannel || config.VoiceChannel || "Aucun changement"}`,
                     ephemeral: true, // Invisible pour les autres utilisateurs
                 });
             }

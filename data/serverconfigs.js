@@ -1,3 +1,4 @@
+const { VoiceChannel } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 
@@ -15,6 +16,7 @@ function loadConfigs() {
             Object.entries(jsonData).map(([guildId, config]) => [
                 guildId,
                 {
+                    VoiceChannel: config.VoiceChannel || null,
                     adminRoleName: config.adminRoleName || 'Admin',
                     mutedRoleName: config.mutedRoleName || 'Muted',
                     links: config.links || [],
@@ -33,6 +35,7 @@ function saveConfigs() {
         Array.from(serverConfigs.entries()).map(([guildId, config]) => [
             guildId,
             {
+                VoiceChannel: config.VoiceChannel || null,
                 adminRoleName: config.adminRoleName || 'Admin',
                 mutedRoleName: config.mutedRoleName || 'Muted',
                 links: config.links || [],

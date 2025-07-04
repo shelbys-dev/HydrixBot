@@ -1,4 +1,5 @@
 const { ChannelType, PermissionsBitField } = require('discord.js');
+const { serverConfigs } = require('../data/serverconfigs.js');
 
 module.exports = {
     name: 'voiceStateUpdate', // Nom de l'événement
@@ -8,7 +9,16 @@ module.exports = {
         // Vérifie si l'utilisateur rejoint un salon vocal
         if (!newState.channelId || newState.channelId === oldState.channelId) return;
 
-        const createChannelId = '1390410735200239626'; // Remplace par l'ID du salon "Crée ton salon"
+        if (!guild) return; // Se déclenche uniquement pour les serveurs
+
+        // Charger la configuration du serveur
+        const config = serverConfigs.get(guild.id);
+        if (!config) {
+            console.error(`Aucune configuration trouvée pour le serveur ${guild.id}`);
+            return;
+        }
+
+        const createChannelId = config.VoiceChannel || null; // Remplace par l'ID du salon "Crée ton salon"
 
         // Si l'utilisateur rejoint bien le salon "Crée ton salon"
         if (newState.channelId === createChannelId) {
