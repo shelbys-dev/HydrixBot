@@ -21,7 +21,7 @@ module.exports = {
                         .setDescription('Voici une liste des liens par défaut :')
                         .addFields(
                             { name: '📌 Site Web', value: 'https://shelbydev.fr', inline: false },
-                            { name: '📧 Contact', value: 'contact@shelbydev.fr)', inline: false }
+                            { name: '📧 Contact', value: '<contact@shelbydev.fr>', inline: false }
                         )
                         .setFooter({ text: 'Bot codé par Shelby S. ! 🚀' })
                         .setTimestamp(),
