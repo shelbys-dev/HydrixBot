@@ -64,7 +64,7 @@ for (const file of eventFiles) {
     }
 }
 
-const { loadReactionCounts, saveReactionCounts } = require('./data/reactioncount.js');
+const { loadReactionCounts, saveReactionCounts } = require('./data/reactionCount.js');
 
 // Charger les données au démarrage
 loadReactionCounts();
