@@ -75,6 +75,11 @@ module.exports = {
                         .setDescription("ID du salon où les utilisateurs peuvent créer leurs salons vocaux")
                         .setRequired(false)
                 )
+        )
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('show')
+                .setDescription('Afficher la configuration actuelle pour ce serveur.')
         ),
     async execute(interaction) {
         const guild = interaction.guild;
@@ -255,6 +260,7 @@ module.exports = {
                     ephemeral: true, // Invisible pour les autres utilisateurs
                 });
             }
+
             if (subcommand === 'voice') {
                 // ------------------- voice ------------------- //
                 if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
@@ -291,6 +297,65 @@ module.exports = {
                     content: `✅ Configuration mise à jour :
                     - Salon vocal : ${VoiceChannel || config.VoiceChannel || "Aucun changement"}`,
                     ephemeral: true, // Invisible pour les autres utilisateurs
+                });
+            }
+
+            if (subcommand === 'show') {
+                // ------------------- SHOW ------------------- //
+                const guildId = guild.id;
+                const config = serverConfigs.get(guildId);
+
+                if (!config) {
+                    return interaction.reply({
+                        content: '⚠️ Aucun paramètre n\'a été configuré pour ce serveur.',
+                        ephemeral: true
+                    });
+                }
+
+                // Prépare un message avec toutes les données configurées
+                const {
+                    links = [],
+                    adminRoleName,
+                    muteRoleName,
+                    autoMessageContent,
+                    autoMessageChannel,
+                    autoMessageInterval,
+                    VoiceChannel
+                } = config;
+
+                const embed = {
+                    color: 0x0099ff,
+                    title: `Configuration actuelle du serveur :`,
+                    fields: [
+                        {
+                            name: '🔗 Liens configurés :', value: links.length > 0 ?
+                                links.map(link => `- **${link.name}** : ${link.url}`).join('\n') :
+                                'Aucun lien configuré', inline: false
+                        },
+                        {
+                            name: '🔧 Rôles configurés :', value:
+                                `- **Rôle Admin :** ${adminRoleName || 'Non défini'}\n- **Rôle Mute :** ${muteRoleName || 'Non défini'}`,
+                            inline: false
+                        },
+                        {
+                            name: '📩 Message automatique :', value:
+                                autoMessageContent ?
+                                    ` - **Message :** ${autoMessageContent}\n - **Canal :** <#${autoMessageChannel}>\n - **Intervalle :** ${autoMessageInterval / 1000}s` :
+                                    'Non configuré',
+                            inline: false
+                        },
+                        {
+                            name: '🎙️ Salon vocal :', value:
+                                VoiceChannel ? `<#${VoiceChannel}>` : 'Non configuré', inline: false
+                        },
+                    ],
+                    timestamp: new Date(),
+                    footer: { text: 'Voici les paramètres actuels.' },
+                };
+
+                await interaction.reply({
+                    embeds: [embed],
+                    ephemeral: true,
                 });
             }
         } catch (error) {
