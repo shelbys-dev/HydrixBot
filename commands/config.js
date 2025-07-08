@@ -1,6 +1,18 @@
 const { SlashCommandBuilder, PermissionsBitField } = require('discord.js');
 const { serverConfigs, loadConfigs, saveConfig, updateServerConfig } = require('../data/serverconfigs.js');
 
+const mysql = require('mysql2/promise');
+
+require('dotenv').config(); // Charger les variables d'environnement depuis le fichier .env
+
+// Configuration de la base de données
+const dbConfig = {
+    host: process.env.DB_HOST, // Host de la base de données
+    user: process.env.DB_USER, // Nom d'utilisateur MySQL
+    password: process.env.DB_PASSWORD, // Mot de passe MySQL
+    database: process.env.DB_NAME, // Nom de la base de données définie dans hydradev.sql
+};
+
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('config')
@@ -132,12 +144,14 @@ module.exports = {
                 await logChannel.send("🔒 Ce salon est configuré pour enregistrer les actions de modération.");
             }
 
+            // Commande pour gérer les liens
             if (subcommand === 'liens') {
                 // ------------------- LIENS ------------------- //
                 const guildId = interaction.guild.id;
                 const name = interaction.options.getString('nom');
                 const url = interaction.options.getString('url');
 
+                // Vérification des permissions
                 if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
                     return interaction.reply({
                         content: "❌ Vous n'avez pas les permissions nécessaires pour exécuter cette commande.",
@@ -145,7 +159,7 @@ module.exports = {
                     });
                 }
 
-                // Valide l'URL
+                // Validation de l'URL
                 if (!/^https?:\/\/.+\..+/i.test(url)) {
                     return interaction.reply({
                         content: '❌ URL invalide. Assurez-vous qu’elle commence par "http://" ou "https://".',
@@ -153,24 +167,64 @@ module.exports = {
                     });
                 }
 
-                // Récupère ou initialise config serveur
-                const serverConfig = serverConfigs.get(guildId) || { links: [] };
+                // Logique pour enregistrer les liens dans la base de données
+                try {
+                    const connection = await mysql.createConnection(dbConfig);
 
-                // Ajoute ou met à jour un lien
-                const existingIndex = serverConfig.links.findIndex(link => link.name === name);
-                if (existingIndex > -1) {
-                    serverConfig.links[existingIndex].url = url; // Met à jour le lien
-                } else {
-                    serverConfig.links.push({ name, url }); // Ajoute un nouveau lien
+                    // Vérifie si ce serveur a déjà une configuration dans `serverconfig`
+                    const [serverConfig] = await connection.execute(
+                        'SELECT id FROM serverconfig WHERE server_id = ?',
+                        [guildId]
+                    );
+
+                    if (serverConfig.length === 0) {
+                        return interaction.reply({
+                            content: "❌ La configuration du serveur n'a pas encore été créée. Veuillez d'abord configurer le serveur.",
+                            ephemeral: true,
+                        });
+                    }
+
+                    const serverConfigId = serverConfig[0].id;
+
+                    // Vérifie si un lien avec le même nom existe déjà dans `links_servers`
+                    const [existingLink] = await connection.execute(
+                        'SELECT id FROM links_servers WHERE serverconfig_id = ? AND name = ?',
+                        [serverConfigId, name]
+                    );
+
+                    if (existingLink.length > 0) {
+                        // Met à jour l'URL du lien existant
+                        await connection.execute(
+                            'UPDATE links_servers SET url = ?, update_at = NOW() WHERE id = ?',
+                            [url, existingLink[0].id]
+                        );
+
+                        await interaction.reply({
+                            content: `✅ Le lien **${name}** a été mis à jour avec succès !`,
+                            ephemeral: true,
+                        });
+                    } else {
+                        // Ajoute un nouveau lien
+                        await connection.execute(
+                            'INSERT INTO links_servers (serverconfig_id, name, url, create_at, update_at) VALUES (?, ?, ?, NOW(), NOW())',
+                            [serverConfigId, name, url]
+                        );
+
+                        await interaction.reply({
+                            content: `✅ Le lien **${name}** a été ajouté avec succès !`,
+                            ephemeral: true,
+                        });
+                    }
+
+                    await connection.end();
+                } catch (error) {
+                    console.error('Erreur lors de la gestion des liens :', error);
+
+                    return interaction.reply({
+                        content: "❌ Une erreur s'est produite en enregistrant le lien dans la base de données.",
+                        ephemeral: true,
+                    });
                 }
-
-                serverConfigs.set(guildId, serverConfig);
-                saveConfig();
-
-                await interaction.reply({
-                    content: `✅ Le lien **${name}** a été configuré avec succès !`,
-                    ephemeral: true,
-                });
             }
 
             if (subcommand === 'automessage') {
