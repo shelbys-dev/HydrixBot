@@ -66,18 +66,31 @@ for (const file of eventFiles) {
 
 const { loadReactionCounts, saveReactionCounts } = require('./data/reactionCount.js');
 
+const { serverConfigs, loadConfigs, saveConfig } = require('./data/serverconfigs.js');
+
 // Charger les données au démarrage
 loadReactionCounts();
+
+// Charger les configurations des serveurs
+loadConfigs().then(configs => {
+    serverConfigs.clear(); // Vider la collection avant de la remplir
+    configs.forEach((config, guildId) => {
+        serverConfigs.set(guildId, config);
+    });
+    console.log('Configurations des serveurs chargées avec succès.');
+}).catch(console.error);
 
 process.on('SIGINT', () => {
     // Sauvegarder les données en cas de fermeture avec Ctrl + C
     saveReactionCounts();
+    saveConfig();
     process.exit();
 });
 
 process.on('exit', (code) => {
     console.log(`Processus terminé avec le code : ${code}. Sauvegarde des données avant de quitter.`);
     saveReactionCounts();
+    saveConfig();
 });
 
 

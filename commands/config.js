@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, PermissionsBitField } = require('discord.js');
-const { serverConfigs, saveConfigs, updateServerConfig } = require('../data/serverconfigs.js');
+const { serverConfigs, loadConfigs, saveConfig, updateServerConfig } = require('../data/serverconfigs.js');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -165,7 +165,7 @@ module.exports = {
                 }
 
                 serverConfigs.set(guildId, serverConfig);
-                saveConfigs();
+                saveConfig();
 
                 await interaction.reply({
                     content: `✅ Le lien **${name}** a été configuré avec succès !`,
@@ -201,7 +201,7 @@ module.exports = {
                 config.autoMessageInterval = interval;
                 config.autoMessageEnabled = true; // Activer automatiquement
 
-                saveConfigs();
+                saveConfig();
 
                 await interaction.reply({
                     content: `✅ **Messages automatiques configurés avec succès** :
@@ -250,7 +250,7 @@ module.exports = {
                 config.adminRoleName = adminRoleName || config.adminRoleName || "Admin";
                 config.muteRoleName = muteRoleName || config.mutedRoleName || "Muted";
 
-                saveConfigs();
+                saveConfig();
 
                 // Répondre à l'utilisateur
                 return interaction.reply({
@@ -290,7 +290,7 @@ module.exports = {
                 // Mettre à jour la configuration
                 config.VoiceChannel = VoiceChannel || config.VoiceChannel || null;
 
-                saveConfigs();
+                saveConfig();
 
                 // Répondre à l'utilisateur
                 return interaction.reply({
