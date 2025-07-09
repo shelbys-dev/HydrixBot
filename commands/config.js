@@ -203,6 +203,20 @@ module.exports = {
                             content: `✅ Le lien **${name}** a été mis à jour avec succès !`,
                             ephemeral: true,
                         });
+
+                        const logChannel = guild.channels.cache.find((ch) => ch.name.toLowerCase() === "logs");
+
+                        if (logChannel) {
+                            // Log de l'intervention
+                            const update_links = new EmbedBuilder()
+                                .setColor("f08f19") // Orange
+                                .setTitle("🔗 Mise à jour 🔗")
+                                .addFields(
+                                    { name: "🔗 Lien mis à jour 🔗", value: `${name}` || "Aucun contenu trouvé" }
+                                )
+                                .setTimestamp();
+                            logChannel.send({ embeds: [update_links] });
+                        }
                     } else {
                         // Ajoute un nouveau lien
                         await connection.execute(
@@ -214,6 +228,20 @@ module.exports = {
                             content: `✅ Le lien **${name}** a été ajouté avec succès !`,
                             ephemeral: true,
                         });
+
+                        const logChannel = guild.channels.cache.find((ch) => ch.name.toLowerCase() === "logs");
+
+                        if (logChannel) {
+                            // Log de l'intervention
+                            const add_links = new EmbedBuilder()
+                                .setColor("0x00FF00") // Vert
+                                .setTitle("🔗 Ajout 🔗")
+                                .addFields(
+                                    { name: "🔗 Lien ajouté 🔗", value: `${name}` || "Aucun contenu trouvé" }
+                                )
+                                .setTimestamp();
+                            logChannel.send({ embeds: [add_links] });
+                        }
                     }
 
                     await connection.end();
@@ -306,6 +334,21 @@ module.exports = {
 
                 saveConfig();
 
+                const logChannel = guild.channels.cache.find((ch) => ch.name.toLowerCase() === "logs");
+
+                if (logChannel) {
+                    // Log de l'intervention
+                    const update_role = new EmbedBuilder()
+                        .setColor("f08f19") // Orange
+                        .setTitle("🔗 Configuration mise à jour 🔗")
+                        .addFields(
+                            { name: "🔗 Rôle Admin 🔗", value: `${adminRoleName || config.adminRoleName || "Aucun changement"}` },
+                            { name: "🔗 Rôle Mute 🔗", value: `${muteRoleName || config.mutedRoleName || "Aucun changement"}` }
+                        )
+                        .setTimestamp();
+                    logChannel.send({ embeds: [update_role] });
+                }
+
                 // Répondre à l'utilisateur
                 return interaction.reply({
                     content: `✅ Configuration mise à jour :
@@ -345,6 +388,20 @@ module.exports = {
                 config.VoiceChannel = VoiceChannel || config.VoiceChannel || null;
 
                 saveConfig();
+
+                const logChannel = guild.channels.cache.find((ch) => ch.name.toLowerCase() === "logs");
+
+                if (logChannel) {
+                    // Log de l'intervention
+                    const update_voicechannel = new EmbedBuilder()
+                        .setColor("f08f19") // Orange
+                        .setTitle("🔗 Configuration mise à jour 🔗")
+                        .addFields(
+                            { name: "🔗 Salon vocal 🔗", value: `${VoiceChannel || config.VoiceChannel || "Aucun changement"}` }
+                        )
+                        .setTimestamp();
+                    logChannel.send({ embeds: [update_voicechannel] });
+                }
 
                 // Répondre à l'utilisateur
                 return interaction.reply({
