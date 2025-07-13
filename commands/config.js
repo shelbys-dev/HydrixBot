@@ -88,6 +88,17 @@ module.exports = {
                         .setRequired(false)
                 )
         )
+        .addSubcommand((subcommand) =>
+            subcommand
+                .setName("autorole")
+                .setDescription("Configurer le rôle attribué automatiquement aux nouveaux membres")
+                .addStringOption((option) =>
+                    option
+                        .setName("role_id")
+                        .setDescription("ID du rôle à attribuer automatiquement.")
+                        .setRequired(true)
+                )
+        )
         .addSubcommand(subcommand =>
             subcommand
                 .setName('show')
@@ -409,6 +420,55 @@ module.exports = {
                     - Salon vocal : ${VoiceChannel || config.VoiceChannel || "Aucun changement"}`,
                     ephemeral: true, // Invisible pour les autres utilisateurs
                 });
+            }
+
+            if (subcommand === 'autorole') {
+                // ------------------- autorole ------------------- //
+                if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+                    return interaction.reply({
+                        content: "❌ Vous n'avez pas les permissions nécessaires pour exécuter cette commande.",
+                        ephemeral: true,
+                    });
+                }
+
+                const guildId = interaction.guild.id;
+                const roleId = interaction.options.getString('role_id');
+
+                try {
+                    // Connexion à la base de données
+                    const connection = await mysql.createConnection(dbConfig);
+
+                    // Vérifie si la configuration existe déjà pour ce serveur
+                    const [rows] = await connection.execute(`SELECT id FROM serverconfig WHERE server_id = ?`, [guildId]);
+
+                    if (rows.length === 0) {
+                        // Si aucune configuration n'existe, crée une nouvelle entrée
+                        await connection.execute(
+                            `INSERT INTO serverconfig (server_id, autorole) VALUES (?, ?)`,
+                            [guildId, roleId]
+                        );
+                    } else {
+                        // Met à jour la colonne `autorole` pour le serveur existant
+                        await connection.execute(
+                            `UPDATE serverconfig SET autorole = ? WHERE server_id = ?`,
+                            [roleId, guildId]
+                        );
+                    }
+
+                    await connection.end();
+
+                    return interaction.reply({
+                        content: `✅ Le rôle automatique a été configuré avec succès !\n\n• **ID du Rôle** : ${roleId}`,
+                        ephemeral: true,
+                    });
+                } catch (error) {
+                    console.error('Erreur lors de la configuration de l\'autorole :', error);
+
+                    return interaction.reply({
+                        content: '❌ Une erreur est survenue lors de la configuration du rôle automatique.',
+                        ephemeral: true,
+                    });
+                }
             }
 
             if (subcommand === 'show') {
