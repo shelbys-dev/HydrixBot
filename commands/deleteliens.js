@@ -61,6 +61,20 @@ module.exports = {
                 });
             }
 
+            const logChannel = guild.channels.cache.find((ch) => ch.name.toLowerCase() === "logs");
+
+            if (logChannel) {
+                // Log de l'intervention
+                const update_links = new EmbedBuilder()
+                    .setColor("FF0000") // Rouge
+                    .setTitle("🔗 Suppression 🔗")
+                    .addFields(
+                        { name: "🔗 Lien supprimé : 🔗", value: `${name}` || "Aucun contenu trouvé" }
+                    )
+                    .setTimestamp();
+                logChannel.send({ embeds: [update_links] });
+            }
+
             // Confirmation de la suppression du lien
             await interaction.reply({
                 content: `✅ Le lien **${name}** a été supprimé avec succès !`,
