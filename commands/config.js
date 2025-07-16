@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, PermissionsBitField } = require('discord.js');
+const { SlashCommandBuilder, PermissionsBitField, EmbedBuilder } = require('discord.js');
 const { serverConfigs, loadConfigs, saveConfig, updateServerConfig } = require('../data/serverconfigs.js');
 
 const mysql = require('mysql2/promise');
@@ -108,6 +108,15 @@ module.exports = {
         const guild = interaction.guild;
         const subcommand = interaction.options.getSubcommand(); // Sous-commande exécutée
 
+        const guildId = interaction.guild.id; // Récupération de l'ID du serveur
+
+        if (!interaction.guild) {
+            return interaction.reply({
+                content: "❌ Cette commande doit être utilisée dans un serveur Discord.",
+                ephemeral: true,
+            });
+        }
+
         try {
             if (subcommand === 'setup') {
                 // ------------------- SETUP (Salon Logs) ------------------- //
@@ -158,7 +167,7 @@ module.exports = {
             // Commande pour gérer les liens
             if (subcommand === 'liens') {
                 // ------------------- LIENS ------------------- //
-                const guildId = interaction.guild.id;
+                const guildId = interaction.guild ? interaction.guild.id : null;
                 const name = interaction.options.getString('nom');
                 const url = interaction.options.getString('url');
 
@@ -220,7 +229,7 @@ module.exports = {
                         if (logChannel) {
                             // Log de l'intervention
                             const update_links = new EmbedBuilder()
-                                .setColor("f08f19") // Orange
+                                .setColor(f08f19) // Orange
                                 .setTitle("🔗 Mise à jour 🔗")
                                 .addFields(
                                     { name: "🔗 Lien mis à jour 🔗", value: `${name}` || "Aucun contenu trouvé" }
@@ -235,17 +244,12 @@ module.exports = {
                             [serverConfigId, name, url]
                         );
 
-                        await interaction.reply({
-                            content: `✅ Le lien **${name}** a été ajouté avec succès !`,
-                            ephemeral: true,
-                        });
-
                         const logChannel = guild.channels.cache.find((ch) => ch.name.toLowerCase() === "logs");
 
                         if (logChannel) {
                             // Log de l'intervention
                             const add_links = new EmbedBuilder()
-                                .setColor("0x00FF00") // Vert
+                                .setColor(0x00FF00) // Vert
                                 .setTitle("🔗 Ajout 🔗")
                                 .addFields(
                                     { name: "🔗 Lien ajouté 🔗", value: `${name}` || "Aucun contenu trouvé" }
@@ -253,6 +257,11 @@ module.exports = {
                                 .setTimestamp();
                             logChannel.send({ embeds: [add_links] });
                         }
+
+                        await interaction.reply({
+                            content: `✅ Le lien **${name}** a été ajouté avec succès !`,
+                            ephemeral: true,
+                        });
                     }
 
                     await connection.end();
@@ -279,7 +288,7 @@ module.exports = {
                 const message = interaction.options.getString('message');
                 const interval = interaction.options.getInteger('interval') * 1000; // ms
 
-                const guildId = guild.id;
+                const guildId = interaction.guild ? interaction.guild.id : null;
 
                 // Récupère ou initialise config serveur
                 if (!serverConfigs.has(guildId)) {
@@ -294,7 +303,7 @@ module.exports = {
                 config.autoMessageInterval = interval;
                 config.autoMessageEnabled = true; // Activer automatiquement
 
-                saveConfig();
+                saveConfig(guildId, config);
 
                 await interaction.reply({
                     content: `✅ **Messages automatiques configurés avec succès** :
@@ -321,7 +330,7 @@ module.exports = {
                 const adminRoleName = interaction.options.getString("admin_role");
                 const muteRoleName = interaction.options.getString("mute_role");
 
-                const guildId = guild.id;
+                const guildId = interaction.guild ? interaction.guild.id : null;
 
                 // Récupère ou initialise config serveur
                 if (!serverConfigs.has(guildId)) {
@@ -343,14 +352,14 @@ module.exports = {
                 config.adminRoleName = adminRoleName || config.adminRoleName || "Admin";
                 config.muteRoleName = muteRoleName || config.mutedRoleName || "Muted";
 
-                saveConfig();
+                saveConfig(guildId, config);
 
                 const logChannel = guild.channels.cache.find((ch) => ch.name.toLowerCase() === "logs");
 
                 if (logChannel) {
                     // Log de l'intervention
                     const update_role = new EmbedBuilder()
-                        .setColor("f08f19") // Orange
+                        .setColor(f08f19) // Orange
                         .setTitle("🔗 Configuration mise à jour 🔗")
                         .addFields(
                             { name: "🔗 Rôle Admin 🔗", value: `${adminRoleName || config.adminRoleName || "Aucun changement"}` },
@@ -381,7 +390,7 @@ module.exports = {
                 const serverId = interaction.guild.id;
                 const VoiceChannel = interaction.options.getString('channel');
 
-                const guildId = guild.id;
+                const guildId = interaction.guild ? interaction.guild.id : null;
 
                 // Récupère ou initialise config serveur
                 if (!serverConfigs.has(guildId)) {
@@ -398,14 +407,14 @@ module.exports = {
                 // Mettre à jour la configuration
                 config.VoiceChannel = VoiceChannel || config.VoiceChannel || null;
 
-                saveConfig();
+                saveConfig(guildId, config);
 
                 const logChannel = guild.channels.cache.find((ch) => ch.name.toLowerCase() === "logs");
 
                 if (logChannel) {
                     // Log de l'intervention
                     const update_voicechannel = new EmbedBuilder()
-                        .setColor("f08f19") // Orange
+                        .setColor(f08f19) // Orange
                         .setTitle("🔗 Configuration mise à jour 🔗")
                         .addFields(
                             { name: "🔗 Salon vocal 🔗", value: `${VoiceChannel || config.VoiceChannel || "Aucun changement"}` }
@@ -431,7 +440,7 @@ module.exports = {
                     });
                 }
 
-                const guildId = interaction.guild.id;
+                const guildId = interaction.guild ? interaction.guild.id : null;
                 const roleId = interaction.options.getString('role_id');
 
                 try {
@@ -473,7 +482,7 @@ module.exports = {
 
             if (subcommand === 'show') {
                 // ------------------- SHOW ------------------- //
-                const guildId = guild.id;
+                const guildId = interaction.guild ? interaction.guild.id : null;
                 const config = serverConfigs.get(guildId);
 
                 if (!config) {
