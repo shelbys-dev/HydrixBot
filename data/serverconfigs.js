@@ -52,7 +52,7 @@ async function loadConfigs() {
         });
 
         // Charger les liens des serveurs
-        for (const [serverId, config] of serverConfigs.entries()) {
+        for (const [guildId, config] of serverConfigs.entries()) {
             const [linkRows] = await connection.execute(
                 'SELECT name, url FROM links_servers WHERE serverconfig_id = ?',
                 [config.id]
@@ -73,50 +73,47 @@ async function loadConfigs() {
     }
 }
 
-async function saveConfig(serverId, config) {
+async function saveConfig(guildId, config) {
+    if (!guildId) throw new Error('Le guildId est requis pour sauvegarder une configuration.');
+
     const connection = await mysql.createConnection(dbConfig);
     try {
-        // Convertir camelCase en snake_case
-        const config = {};
+        const sqlConfig = {};
         for (const [camelKey, value] of Object.entries(config)) {
-            const sqlKey = keyMapping[camelKey] || camelKey; // Utilise la clé telle quelle si non mappée
-            config[sqlKey] = value;
+            if (!keyMapping[camelKey]) continue;
+            const sqlKey = keyMapping[camelKey];
+            sqlConfig[sqlKey] = value ?? null;
         }
 
-        // Supprimer "links" (car c'est géré dans une table séparée)
-        const links = config.links || [];
-        delete config.links;
+        const links = sqlConfig.links || [];
+        delete sqlConfig.links;
 
-        // Vérifie si la configuration existe déjà
         const [existing] = await connection.execute(
             'SELECT id FROM serverconfig WHERE server_id = ?',
-            [serverId]
+            [guildId]
         );
 
         let serverConfigId;
         if (existing.length > 0) {
-            // Mettre à jour si le serveur existe
             serverConfigId = existing[0].id;
             const updateQuery = `
                 UPDATE serverconfig
-                SET ${Object.keys(config).map((key) => `${key} = ?`).join(', ')}
+                SET ${Object.keys(sqlConfig).map((key) => `${key} = ?`).join(', ')}
                 WHERE server_id = ?
             `;
-            await connection.execute(updateQuery, [...Object.values(config), serverId]);
+            await connection.execute(updateQuery, [...Object.values(sqlConfig), guildId]);
         } else {
-            // Insérer une nouvelle configuration
             const insertQuery = `
-                INSERT INTO serverconfig (${Object.keys(config).join(', ')}, server_id)
-                VALUES (${Object.keys(config).map(() => '?').join(', ')}, ?)
+                INSERT INTO serverconfig (${Object.keys(sqlConfig).join(', ')}, server_id)
+                VALUES (${Object.keys(sqlConfig).map(() => '?').join(', ')}, ?)
             `;
             const result = await connection.execute(insertQuery, [
-                ...Object.values(config),
-                serverId,
+                ...Object.values(sqlConfig),
+                guildId,
             ]);
             serverConfigId = result[0].insertId;
         }
 
-        // Gérer les liens (table séparée)
         await connection.execute('DELETE FROM links_servers WHERE serverconfig_id = ?', [
             serverConfigId,
         ]);
@@ -126,15 +123,16 @@ async function saveConfig(serverId, config) {
             await connection.execute(insertLinkQuery, [serverConfigId, link.name, link.url]);
         }
 
-        console.log(`Configuration sauvegardée pour le serveur ${serverId}`);
+        console.log(`Configuration sauvegardée pour le serveur ${guildId}`);
     } catch (error) {
         console.error('Erreur lors de la sauvegarde de la configuration :', error);
+        throw error;
     } finally {
         await connection.end();
     }
 }
 
-async function updateServerConfig(serverId, key, value) {
+async function updateServerConfig(guildId, key, value) {
     // Vérifie si la clé existe dans le mappage
     if (!keyMapping[key]) {
         throw new Error(`La clé '${key}' n'est pas valide.`);
@@ -146,12 +144,12 @@ async function updateServerConfig(serverId, key, value) {
     try {
         await connection.execute(
             `UPDATE serverconfig SET ${sqlKey} = ? WHERE server_id = ?`,
-            [value, serverId]
+            [value, guildId]
         );
-        console.log(`Configuration mise à jour : ${sqlKey} = ${value} pour le serveur ${serverId}`);
+        console.log(`Configuration mise à jour : ${sqlKey} = ${value} pour le serveur ${guildId}`);
     } catch (error) {
         console.error(
-            `Erreur lors de la mise à jour de ${sqlKey} pour le serveur ${serverId} :`,
+            `Erreur lors de la mise à jour de ${sqlKey} pour le serveur ${guildId} :`,
             error
         );
     } finally {
