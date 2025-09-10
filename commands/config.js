@@ -90,6 +90,17 @@ module.exports = {
         )
         .addSubcommand((subcommand) =>
             subcommand
+                .setName("annonce")
+                .setDescription("Configurer le salon d'annonces")
+                .addStringOption((option) =>
+                    option
+                        .setName("channel")
+                        .setDescription("ID du salon annonce")
+                        .setRequired(false)
+                )
+        )
+        .addSubcommand((subcommand) =>
+            subcommand
                 .setName("autorole")
                 .setDescription("Configurer le rôle attribué automatiquement aux nouveaux membres")
                 .addStringOption((option) =>
@@ -229,7 +240,7 @@ module.exports = {
                         if (logChannel) {
                             // Log de l'intervention
                             const update_links = new EmbedBuilder()
-                                .setColor(f08f19) // Orange
+                                .setColor(0xf08f19) // Orange
                                 .setTitle("🔗 Mise à jour 🔗")
                                 .addFields(
                                     { name: "🔗 Lien mis à jour 🔗", value: `${name}` || "Aucun contenu trouvé" }
@@ -359,7 +370,7 @@ module.exports = {
                 if (logChannel) {
                     // Log de l'intervention
                     const update_role = new EmbedBuilder()
-                        .setColor(f08f19) // Orange
+                        .setColor(0xf08f19) // Orange
                         .setTitle("🔗 Configuration mise à jour 🔗")
                         .addFields(
                             { name: "🔗 Rôle Admin 🔗", value: `${adminRoleName || config.adminRoleName || "Aucun changement"}` },
@@ -414,7 +425,7 @@ module.exports = {
                 if (logChannel) {
                     // Log de l'intervention
                     const update_voicechannel = new EmbedBuilder()
-                        .setColor(f08f19) // Orange
+                        .setColor(0xf08f19) // Orange
                         .setTitle("🔗 Configuration mise à jour 🔗")
                         .addFields(
                             { name: "🔗 Salon vocal 🔗", value: `${VoiceChannel || config.VoiceChannel || "Aucun changement"}` }
@@ -480,6 +491,71 @@ module.exports = {
                 }
             }
 
+            if (subcommand === 'annonce') {
+                // ------------------- annonce ------------------- //
+                if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+                    return interaction.reply({
+                        content: "❌ Vous n'avez pas les permissions nécessaires pour exécuter cette commande.",
+                        ephemeral: true,
+                    });
+                }
+
+                const guildId = interaction.guild ? interaction.guild.id : null;
+                const AnnonceChannel = interaction.options.getString('channel');
+
+                try {
+                    // Connexion à la base de données
+                    const connection = await mysql.createConnection(dbConfig);
+
+                    // Vérifie si la configuration existe déjà pour ce serveur
+                    const [rows] = await connection.execute(`SELECT id FROM serverconfig WHERE server_id = ?`, [guildId]);
+
+                    if (rows.length === 0) {
+                        // Si aucune configuration n'existe, crée une nouvelle entrée
+                        await connection.execute(
+                            `INSERT INTO serverconfig (server_id, annonce_channel) VALUES (?, ?)`,
+                            [guildId, AnnonceChannel]
+                        );
+                    } else {
+                        // Met à jour la colonne `annonce_channel` pour le serveur existant
+                        await connection.execute(
+                            `UPDATE serverconfig SET annonce_channel = ? WHERE server_id = ?`,
+                            [AnnonceChannel, guildId]
+                        );
+                    }
+
+                    await connection.end();
+
+                    const logChannel = guild.channels.cache.find((ch) => ch.name.toLowerCase() === "logs");
+
+                    if (logChannel) {
+                        // Log de l'intervention
+                        const update_annoncechannel = new EmbedBuilder()
+                            .setColor(0xf08f19) // Orange
+                            .setTitle("🔗 Configuration mise à jour 🔗")
+                            .addFields(
+                                { name: "🔗 Salon d'annonces 🔗", value: `${AnnonceChannel || "Aucun changement"}` }
+                            )
+                            .setTimestamp();
+                        logChannel.send({ embeds: [update_annoncechannel] });
+                    }
+
+                    // Répondre à l'utilisateur
+                    return interaction.reply({
+                        content: `✅ Configuration mise à jour :
+                    - Salon d'annonces : ${AnnonceChannel || "Aucun changement"}`,
+                        ephemeral: true, // Invisible pour les autres utilisateurs
+                    });
+                } catch (error) {
+                    console.error('Erreur lors de la configuration de l\'autorole :', error);
+
+                    return interaction.reply({
+                        content: '❌ Une erreur est survenue lors de la configuration du rôle automatique.',
+                        ephemeral: true,
+                    });
+                }
+            }
+
             if (subcommand === 'show') {
                 // ------------------- SHOW ------------------- //
                 const guildId = interaction.guild ? interaction.guild.id : null;
@@ -500,7 +576,8 @@ module.exports = {
                     autoMessageContent,
                     autoMessageChannel,
                     autoMessageInterval,
-                    VoiceChannel
+                    VoiceChannel,
+                    AnnonceChannel
                 } = config;
 
                 const embed = {
@@ -527,6 +604,10 @@ module.exports = {
                         {
                             name: '🎙️ Salon vocal :', value:
                                 VoiceChannel ? `<#${VoiceChannel}>` : 'Non configuré', inline: false
+                        },
+                        {
+                            name: '🎙️ Salon d\'annonces :', value:
+                                AnnonceChannel ? `<#${AnnonceChannel}>` : 'Non configuré', inline: false
                         },
                     ],
                     timestamp: new Date(),
