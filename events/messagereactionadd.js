@@ -1,84 +1,108 @@
 const { EmbedBuilder } = require("discord.js");
-const { serverConfigs } = require('../data/serverconfigs.js');
-const { reactionCounts, saveReactionCounts } = require('../data/reactionCount.js');
+const mysql = require("mysql2/promise");
 
-// Cache pour le rôle admin supprimé lors d'un mute
+require('dotenv').config(); // Charger les variables d'environnement depuis le fichier .env
+
+// Connexion MySQL
+const db = mysql.createPool({
+    host: process.env.DB_HOST, // Host de la base de données
+    user: process.env.DB_USER, // Nom d'utilisateur MySQL
+    password: process.env.DB_PASSWORD, // Mot de passe MySQL
+    database: process.env.DB_NAME, // Nom de la base de données définie dans hydradev.sql
+});
+
+// Cache temporaire pour les rôles admin
 const adminRoleCache = new Map();
 
 module.exports = {
-    name: "messageReactionAdd", // Nom de l'événement
-    once: false, // Cet événement se déclenche plusieurs fois
-    async execute(reaction, user) {
-        // Ignorer les réactions du bot
-        if (user.bot) return;
+    name: "messageReactionAdd",
+    once: false,
 
+    async execute(reaction, user) {
+        if (user.bot) return;
         const { message } = reaction;
         const guild = message.guild;
+        if (!guild) return;
 
-        if (!guild) return; // Se déclenche uniquement pour les serveurs
-
-        // Charger la configuration du serveur
-        const config = serverConfigs.get(guild.id);
-        if (!config) {
+        // Récupérer la config du serveur
+        const [configs] = await db.query(
+            "SELECT * FROM serverconfig WHERE server_id = ?",
+            [guild.id]
+        );
+        if (configs.length === 0) {
             console.error(`Aucune configuration trouvée pour le serveur ${guild.id}`);
             return;
         }
+        const config = configs[0];
 
-        const flagEmoji = config.flagEmoji || "🏳️";
-        const reportThreshold = config.reportThreshold || 5;
-        const mutedRoleName = config.mutedRoleName || "mute";
-        const adminRoleName = config.adminRoleName || "admin";
-        const reportResetTime = config.reportResetTime || 10 * 60 * 1000; // 10 minutes par défaut
+        const flagEmoji = "🏳️";
+        const reportThreshold = 5;
+        const mutedRoleName = config.muted_role || "mute";
+        const adminRoleName = config.admin_role || "admin";
+        const reportResetTime = 10 * 60 * 1000;
         const logChannel = guild.channels.cache.find((ch) => ch.name.toLowerCase() === "logs");
 
-        // Vérifier si l'emoji correspond au drapeau défini
         if (reaction.emoji.name === flagEmoji) {
             const member = await guild.members.fetch(message.author.id).catch(() => null);
-            if (!member) {
-                console.error(`Impossible d'obtenir le membre pour ${message.author.id}`);
-                return;
+            if (!member) return;
+
+            // Récupérer ou créer l'entrée dans `reactioncounts`
+            const [rows] = await db.query(
+                "SELECT * FROM reactioncounts WHERE message_id = ?",
+                [message.id]
+            );
+            let reactionId;
+            let count = 0;
+
+            if (rows.length === 0) {
+                const [result] = await db.query(
+                    "INSERT INTO reactioncounts (message_id, count) VALUES (?, ?)",
+                    [message.id, 0]
+                );
+                reactionId = result.insertId;
+            } else {
+                reactionId = rows[0].id;
+                count = rows[0].count;
             }
 
-            // Obtenir ou initialiser le compteur de réactions
-            const counts = reactionCounts.get(message.id) || { count: 0, users: new Set() };
+            // Vérifie si l'utilisateur a déjà réagi
+            const [alreadyReacted] = await db.query(
+                "SELECT * FROM users_reaction WHERE reactioncounts_id = ? AND user_id = ?",
+                [reactionId, user.id]
+            );
 
-            // Éviter les doublons
-            if (!counts.users.has(user.id)) {
-                counts.count++;
-                counts.users.add(user.id);
-                reactionCounts.set(message.id, counts);
+            if (alreadyReacted.length === 0) {
+                count++;
+                await db.query(
+                    "UPDATE reactioncounts SET count = ? WHERE id = ?",
+                    [count, reactionId]
+                );
 
-                console.log(`Signalement ajouté pour le message ${message.id}. Total : ${counts.count}.`, reactionCounts);
+                await db.query(
+                    "INSERT INTO users_reaction (reactioncounts_id, user_id) VALUES (?, ?)",
+                    [reactionId, user.id]
+                );
 
                 if (logChannel) {
-                    // Log de l'intervention
                     const embed = new EmbedBuilder()
-                        .setColor("f08f19") // Orange
+                        .setColor("f08f19")
                         .setTitle("🚨 Signalement ajouté 🚨")
                         .setDescription(`Le message de ${member.user.tag} pose problème.`)
                         .addFields(
-                            { name: "Message", value: `${message.content}` || "Aucun contenu trouvé" },
-                            { name: "Total des signalements", value: `${counts.count}` }
+                            { name: "Message", value: message.content || "Aucun contenu trouvé" },
+                            { name: "Total des signalements", value: `${count}` }
                         )
                         .setTimestamp();
                     logChannel.send({ embeds: [embed] });
                 }
 
-                // Sauvegarde dans le fichier à chaque mise à jour
-                saveReactionCounts();
-
-                // Supprimer la réaction pour garder l'anonymat
                 try {
                     await reaction.users.remove(user.id);
                 } catch (error) {
                     console.error("Impossible de supprimer la réaction :", error);
                 }
 
-                // Vérifier si le seuil est atteint
-                if (counts.count >= reportThreshold) {
-                    console.log(`Seuil atteint pour le message de ${member.user.tag}.`);
-
-                    // Chercher les rôles
+                if (count >= reportThreshold) {
                     const muteRole = guild.roles.cache.find((r) => r.name === mutedRoleName);
                     const adminRole = guild.roles.cache.find((r) => r.name === adminRoleName);
 
@@ -88,9 +112,8 @@ module.exports = {
                     }
 
                     if (logChannel) {
-                        // Log de l'intervention
                         const embed = new EmbedBuilder()
-                            .setColor("FF0000") // Rouge
+                            .setColor("FF0000")
                             .setTitle("🚨 Signalement Modération")
                             .setDescription(`Le message de ${member.user.tag} a été signalé plusieurs fois et traité.`)
                             .addFields(
@@ -102,31 +125,22 @@ module.exports = {
                     }
 
                     try {
-                        // Ajouter le rôle de mute
                         await member.roles.add(muteRole);
 
-                        // Gérer le rôle admin
                         if (adminRole && member.roles.cache.has(adminRole.id)) {
                             adminRoleCache.set(member.id, true);
                             await member.roles.remove(adminRole);
                         }
 
-                        // Notifier l'utilisateur
-                        await member.send(
-                            `🔇 Vous avez été mute sur **${guild.name}** après avoir reçu ${reportThreshold} signalements.`
-                        ).catch(() => {
-                            const logChannel = member.guild.channels.cache.find(ch => ch.name.toLowerCase() === 'logs');
-                            if (logChannel) {
-                                logChannel.send(`Impossible d'envoyer un MP à ${member.user.tag}`);
-                            } else {
-                                console.error(`Impossible d'envoyer un MP à ${member.user.tag} et le salon "logs" est introuvable.`);
-                            };
-                        });
+                        await member.send(`🔇 Vous avez été mute sur **${guild.name}** après avoir reçu ${reportThreshold} signalements.`)
+                            .catch(() => {
+                                if (logChannel) {
+                                    logChannel.send(`Impossible d'envoyer un MP à ${member.user.tag}`);
+                                }
+                            });
 
-                        // Supprimer le message signalé
                         await message.delete();
 
-                        // Démuter automatiquement
                         setTimeout(async () => {
                             await member.roles.remove(muteRole);
 
@@ -140,9 +154,8 @@ module.exports = {
                         console.error("Erreur lors de l'action de mute :", error);
                     }
 
-                    reactionCounts.delete(message.id);
-                    // Sauvegarde après suppression du message
-                    saveReactionCounts();
+                    await db.query("DELETE FROM reactioncounts WHERE id = ?", [reactionId]);
+                    await db.query("DELETE FROM users_reaction WHERE reactioncounts_id = ?", [reactionId]);
                 }
             }
         }
