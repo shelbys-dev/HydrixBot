@@ -16,6 +16,7 @@ const serverConfigs = new Map();
 // Objets utilisés pour mapper les clés camelCase et snake_case
 const keyMapping = {
     VoiceChannel: 'voice_channel',
+    AnnonceChannel: 'annonce_channel',
     adminRoleName: 'admin_role',
     mutedRoleName: 'muted_role',
     autoMessageChannel: 'auto_message_channel',
