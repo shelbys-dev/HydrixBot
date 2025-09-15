@@ -1,11 +1,29 @@
 const { ActivityType } = require('discord.js');
 const { serverConfigs } = require('../data/serverconfigs.js');
 
+// DB
+const db = require('../data/db');
+
 module.exports = {
     name: 'ready', // Nom de l'événement
     once: false, // true si l'événement ne se déclenche qu'une fois
-    execute(client) {
+    async execute(client) {
         console.log(`✅ Bot connecté en tant que ${client.user.tag}`);
+
+        try {
+            const guildIds = client.guilds.cache.map(g => g.id);
+
+            if (guildIds.length) {
+                // Préparer un INSERT IGNORE en bulk
+                const values = guildIds.map(() => '(?)').join(',');
+                const sql = `INSERT IGNORE INTO serverconfig (server_id) VALUES ${values}`;
+                await db.query(sql, guildIds);
+                console.log(`🔧 Backfill: ${guildIds.length} guild(s) vérifiés/insérés dans serverconfig`);
+            }
+        } catch (err) {
+            console.error('[ready] Erreur backfill serverconfig:', err);
+        }
+
         const totalMembers = client.guilds.cache.reduce((acc, guild) => acc + guild.memberCount, 0);
 
         // Liste des statuts à alterner

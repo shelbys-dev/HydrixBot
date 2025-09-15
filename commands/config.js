@@ -15,16 +15,8 @@ const {
   ComponentType,
 } = require('discord.js');
 
-const mysql = require('mysql2/promise');
-require('dotenv').config();
-
-// ---------- DB POOL (inline, pas de service externe) ----------
-const db = mysql.createPool({
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-});
+// DB
+const db = require('../data/db');
 
 // ---------- Helpers DB (tous dans CE fichier) ----------
 async function getOrCreateServerConfigId(guildId) {
