@@ -20,6 +20,17 @@ module.exports = {
 
     async execute(reaction, user) {
         if (user.bot) return;
+
+        // --- GESTION DES PARTIALS ---
+        try {
+            if (reaction.partial) await reaction.fetch();             // récupère la réaction + message
+            if (user.partial) await user.fetch();                     // récupère l'utilisateur si partiel
+            if (reaction.message && reaction.message.partial) await reaction.message.fetch(); // récupère le message
+        } catch (e) {
+            console.error('[messageReactionAdd] Fetch partials failed:', e);
+            return; // impossible de continuer sans données complètes
+        }
+
         const { message } = reaction;
         const guild = message.guild;
         if (!guild) return;
