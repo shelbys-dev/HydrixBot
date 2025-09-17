@@ -19,6 +19,14 @@ module.exports = {
             .setCustomId('importantModal')
             .setTitle('📢 Nouvelle annonce');
 
+        const titleInput = new TextInputBuilder()
+            .setCustomId('important_title')
+            .setLabel('Titre de l’annonce')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('Ex: Maintenance du serveur')
+            .setRequired(true)
+            .setMaxLength(256); // limite titre embed
+
         const contentInput = new TextInputBuilder()
             .setCustomId('important_content')
             .setLabel('Contenu de l’annonce')
@@ -27,7 +35,10 @@ module.exports = {
             .setRequired(true)
             .setMaxLength(MAX_MODAL);
 
-        modal.addComponents(new ActionRowBuilder().addComponents(contentInput));
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(titleInput),
+            new ActionRowBuilder().addComponents(contentInput)
+        );
 
         return interaction.showModal(modal);
     },

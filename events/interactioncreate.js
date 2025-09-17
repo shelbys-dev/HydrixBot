@@ -26,6 +26,7 @@ module.exports = {
                 return interaction.editReply('❌ Cette action doit être utilisée dans un serveur.');
             }
 
+            const title = interaction.fields.getTextInputValue('important_title');
             const contenu = interaction.fields.getTextInputValue('important_content')?.trim();
             if (!contenu) {
                 return interaction.editReply('❌ Le contenu est vide.');
@@ -68,10 +69,10 @@ module.exports = {
                 let lastMsg;
                 for (const [i, part] of parts.entries()) {
                     const embed = new EmbedBuilder()
-                        .setTitle(i === 0 ? '📢 Annonce importante' : 'Suite')
+                        .setTitle(i === 0 ? `📢 ${title}` : 'Suite')
                         .setDescription(part)
                         .setColor(0xff5555)
-                        .setThumbnail(interaction.client.user.displayAvatarURL({ size: 1024 }))
+                        .setThumbnail(interaction.user.displayAvatarURL({ size: 256, extension: 'png', forceStatic: false }))
                         .setFooter({ text: `Par ${interaction.user.tag}` })
                         .setTimestamp();
 
@@ -84,6 +85,25 @@ module.exports = {
                 // 🔁 Crosspost si c’est un salon d’annonces
                 if (annonceChannel.type === ChannelType.GuildAnnouncement && lastMsg?.crosspost) {
                     try { await lastMsg.crosspost(); } catch { }
+                }
+
+                const logChannel = guild.channels.cache.find(
+                    (ch) => ch.name && ch.name.toLowerCase() === 'logs'
+                );
+
+                if (logChannel) {
+                    const annonce_embed = new EmbedBuilder()
+                        .setColor(0xff5555)
+                        .setTitle('📢 Annonce publiée')
+                        .setDescription(`${interaction.user.tag} a publié ${title} dans <#${annonceChannelId}>.`)
+                        .setThumbnail(interaction.user.displayAvatarURL({ size: 256, extension: 'png', forceStatic: false }))
+                        .setFooter({ text: 'Bot codé par Shelby S. ! 🚀' })
+                        .setTimestamp();
+
+                    // on ignore les erreurs d’envoi pour ne pas bloquer la suite
+                    logChannel.send({ embeds: [annonce_embed] }).catch(() => { });
+                } else {
+                    console.error('Channel "logs" introuvable dans le serveur.');
                 }
 
                 return interaction.editReply(`✅ Annonce publiée dans <#${annonceChannelId}>.`);
