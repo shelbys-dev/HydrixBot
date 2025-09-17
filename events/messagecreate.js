@@ -1,144 +1,114 @@
-const mysql = require("mysql2/promise");
+// DB
+const db = require('../data/db');
 
-require("dotenv").config(); // Charger les variables d'environnement
-
-// Configuration de la base de données
-const dbConfig = {
-    host: process.env.DB_HOST,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
-};
-
-// Chargement des données utilisateur spécifiques à un serveur
+// -------- Helpers DB (db-based) --------
 async function loadUserData(guildId, userId) {
-    const connection = await mysql.createConnection(dbConfig);
-    try {
-        const [rows] = await connection.execute(
-            `
-      SELECT l.xp, l.level
-      FROM levels l
-      JOIN levels_has_serverconfig ls ON ls.levels_id = l.id
-      JOIN serverconfig sc ON sc.id = ls.serverconfig_id
-      WHERE sc.server_id = ? AND l.user_id = ?
-      `,
-            [guildId, userId]
-        );
+  const [rows] = await db.query(
+    `
+    SELECT l.id AS level_id, l.xp, l.level
+    FROM levels l
+    JOIN levels_has_serverconfig ls ON ls.levels_id = l.id
+    JOIN serverconfig sc ON sc.id = ls.serverconfig_id
+    WHERE sc.server_id = ? AND l.user_id = ?
+    LIMIT 1
+  `,
+    [guildId, userId]
+  );
 
-        if (rows.length > 0) {
-            // Retourner les données de l'utilisateur si elles existent pour ce serveur
-            return { xp: rows[0].xp, level: rows[0].level };
-        } else {
-            // Si aucune donnée n'existe, renvoyer une structure initialisée
-            return { xp: 0, level: 1 };
-        }
-    } catch (error) {
-        console.error("Erreur lors du chargement des données utilisateur :", error);
-        throw error;
-    } finally {
-        await connection.end();
-    }
+  if (rows.length) {
+    return { levelId: rows[0].level_id, xp: rows[0].xp, level: rows[0].level };
+  }
+  return { levelId: null, xp: 0, level: 1 };
 }
 
-// Sauvegarde des données utilisateur pour un serveur spécifique
-async function saveUserData(guildId, userId, xp, level) {
-    const connection = await mysql.createConnection(dbConfig);
-    try {
-        // Vérifier si le serveur existe dans `serverconfig`
-        const [serverRows] = await connection.execute(
-            "SELECT id FROM serverconfig WHERE server_id = ?",
-            [guildId]
-        );
+async function saveUserData(guildId, userId, xp, level, levelId = null) {
+  // On encapsule dans une transaction pour garder (levels + liaison) cohérents
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
 
-        if (serverRows.length === 0) {
-            throw new Error(`Le serveur ${guildId} n'existe pas dans la base.`);
-        }
-        const serverConfigId = serverRows[0].id;
-
-        // Vérifier si l'utilisateur a des données dans ce serveur spécifique via `levels_has_serverconfig`
-        const [levelRows] = await connection.execute(
-            `
-      SELECT l.id FROM levels l
-      JOIN levels_has_serverconfig ls ON ls.levels_id = l.id
-      WHERE l.user_id = ? AND ls.serverconfig_id = ?
-      `,
-            [userId, serverConfigId]
-        );
-
-        if (levelRows.length === 0) {
-            // Si l'utilisateur n'existe pas encore pour ce serveur, créer une entrée
-            const [insertResult] = await connection.execute(
-                "INSERT INTO levels (user_id, xp, level) VALUES (?, ?, ?)",
-                [userId, xp, level]
-            );
-
-            const levelId = insertResult.insertId;
-
-            // Associer l'entrée à ce serveur dans `levels_has_serverconfig`
-            await connection.execute(
-                "INSERT INTO levels_has_serverconfig (levels_id, serverconfig_id) VALUES (?, ?)",
-                [levelId, serverConfigId]
-            );
-        } else {
-            // Sinon, mettre à jour les données existantes
-            const levelId = levelRows[0].id;
-            await connection.execute(
-                "UPDATE levels SET xp = ?, level = ? WHERE id = ?",
-                [xp, level, levelId]
-            );
-        }
-
-        console.log(
-            `Données sauvegardées pour l'utilisateur ${userId} sur le serveur ${guildId}.`
-        );
-    } catch (error) {
-        console.error("Erreur lors de la sauvegarde des données utilisateur :", error);
-        throw error;
-    } finally {
-        await connection.end();
-    }
-}
-
-// Ajout d'XP à un utilisateur pour un serveur spécifique
-async function addXP(userId, guildId, xpGained, message) {
-    // Charger les données utilisateur spécifiques au serveur
-    const userData = await loadUserData(guildId, userId);
-
-    // Ajouter de l'XP
-    userData.xp += xpGained;
-
-    const currentLevel = userData.level;
-    const nextLevelXP = 5 * Math.pow(currentLevel, 2) + 50; // Formule pour prochain niveau
-
-    // Vérifier si l'utilisateur passe au niveau suivant
-    if (userData.xp >= nextLevelXP) {
-        userData.level++;
-        userData.xp = 0; // Réinitialisation XP après changement de niveau
-
-        message.channel.send(
-            `🎉 **${message.author.username}** passe au **niveau ${userData.level}** ! Félicitations !`
-        );
-    }
-
-    // Sauvegarder les données mises à jour
-    await saveUserData(
-        guildId,
-        userId,
-        userData.xp,
-        userData.level
+    // 1) Récupérer (ou vérifier) le serverconfig.id
+    const [serverRows] = await conn.query(
+      'SELECT id FROM serverconfig WHERE server_id = ? LIMIT 1',
+      [guildId]
     );
+    if (!serverRows.length) {
+      throw new Error(`Le serveur ${guildId} n'existe pas dans serverconfig.`);
+    }
+    const serverConfigId = serverRows[0].id;
+
+    // 2) Si on a déjà un levelId, on met à jour; sinon on insère + lie
+    if (levelId) {
+      await conn.query('UPDATE levels SET xp = ?, level = ? WHERE id = ?', [
+        xp,
+        level,
+        levelId,
+      ]);
+    } else {
+      const [ins] = await conn.query(
+        'INSERT INTO levels (user_id, xp, level) VALUES (?, ?, ?)',
+        [userId, xp, level]
+      );
+      levelId = ins.insertId;
+      await conn.query(
+        'INSERT INTO levels_has_serverconfig (levels_id, serverconfig_id) VALUES (?, ?)',
+        [levelId, serverConfigId]
+      );
+    }
+
+    await conn.commit();
+    return levelId;
+  } catch (e) {
+    await conn.rollback();
+    throw e;
+  } finally {
+    conn.release();
+  }
 }
 
-module.exports = {
-    name: "messageCreate",
-    async execute(message) {
-        if (message.author.bot) return; // Ignorer les bots
+function nextLevelThreshold(currentLevel) {
+  // même formule que ton code d’origine
+  return 5 * Math.pow(currentLevel, 2) + 50;
+}
 
-        try {
-            const xpGain = 10; // XP gagné par message
-            await addXP(message.author.id, message.guild.id, xpGain, message);
-        } catch (error) {
-            console.error("Erreur lors de l'ajout d'XP :", error);
-        }
-    },
+async function addXP(message, xpGained) {
+  const guildId = message.guild.id;
+  const userId = message.author.id;
+
+  const data = await loadUserData(guildId, userId);
+
+  let newXP = data.xp + xpGained;
+  let newLevel = data.level;
+
+  const threshold = nextLevelThreshold(newLevel);
+  if (newXP >= threshold) {
+    newLevel += 1;
+    newXP = 0;
+    // petite annonce niveau (non bloquante)
+    message.channel
+      .send(`🎉 **${message.author.username}** passe au **niveau ${newLevel}** ! Félicitations !`)
+      .catch(() => {});
+  }
+
+  await saveUserData(guildId, userId, newXP, newLevel, data.levelId);
+}
+
+// -------- Event listener --------
+module.exports = {
+  name: 'messageCreate',
+  once: false,
+  async execute(message) {
+    try {
+      // Ignore les bots et les DM
+      if (message.author.bot || !message.guild) return;
+
+      // (Optionnel) Anti-spam ultra simple : ignore si message < 2 caractères
+      if ((message.content || '').trim().length < 2) return;
+
+      const XP_PER_MESSAGE = 10;
+      await addXP(message, XP_PER_MESSAGE);
+    } catch (error) {
+      console.error('Erreur lors de l’ajout d’XP :', error);
+    }
+  },
 };

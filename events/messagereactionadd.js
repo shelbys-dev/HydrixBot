@@ -1,15 +1,8 @@
 const { EmbedBuilder } = require("discord.js");
-const mysql = require("mysql2/promise");
-
 require('dotenv').config(); // Charger les variables d'environnement depuis le fichier .env
 
-// Connexion MySQL
-const db = mysql.createPool({
-    host: process.env.DB_HOST, // Host de la base de données
-    user: process.env.DB_USER, // Nom d'utilisateur MySQL
-    password: process.env.DB_PASSWORD, // Mot de passe MySQL
-    database: process.env.DB_NAME, // Nom de la base de données définie dans hydradev.sql
-});
+// DB
+const db = require('../data/db');
 
 // Cache temporaire pour les rôles admin
 const adminRoleCache = new Map();

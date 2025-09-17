@@ -1,34 +1,30 @@
+// events/guildmemberadd.js
 const { EmbedBuilder } = require('discord.js');
 
-const mysql = require('mysql2/promise');
-
-require('dotenv').config(); // Charger les variables d'environnement depuis le fichier .env
-
-// Configuration de la base de données
-const dbConfig = {
-    host: process.env.DB_HOST, // Host de la base de données
-    user: process.env.DB_USER, // Nom d'utilisateur MySQL
-    password: process.env.DB_PASSWORD, // Mot de passe MySQL
-    database: process.env.DB_NAME, // Nom de la base de données définie dans hydradev.sql
-};
+// DB
+const db = require('../data/db');
 
 module.exports = {
-    name: 'guildMemberAdd', // Nom de l'événement
-    once: false, // true si l'événement ne se déclenche qu'une fois
+    name: 'guildMemberAdd',
+    once: false,
+
     async execute(member) {
-        // Envoie un message direct au nouveau membre
-        member.send(`Salut ${member.user.username}, bienvenue dans **${member.guild.name}** ! Si tu as des questions, n’hésite pas à demander. 😊`).catch((error) => {
+        // 1) DM de bienvenue (non bloquant)
+        member.send(
+            `Salut ${member.user.username}, bienvenue dans **${member.guild.name}** ! Si tu as des questions, n’hésite pas à demander. 😊`
+        ).catch((error) => {
             console.error(`Impossible d'envoyer un DM à ${member.user.tag} :`, error.message);
         });
 
-        // Accès au serveur via member.guild
-        const logChannel = member.guild.channels.cache.find(ch => ch.name.toLowerCase() === 'logs');
+        // 2) Embed dans #logs si présent
+        const logChannel = member.guild.channels.cache.find(
+            (ch) => ch.name && ch.name.toLowerCase() === 'logs'
+        );
 
         if (logChannel) {
-            // Création de l'embed
             const embed = new EmbedBuilder()
-                .setColor(0x00FF00) // Vert (tu peux utiliser une couleur HEX ou une constante comme 'Green')
-                .setTitle('👋 **Nouveau membre**')
+                .setColor(0x00ff00)
+                .setTitle('👋 Nouveau membre')
                 .setDescription(`${member.user.tag} a rejoint le serveur ! 🎉`)
                 .addFields(
                     { name: '🔗 ID du membre', value: `${member.id}` },
@@ -38,27 +34,21 @@ module.exports = {
                 .setFooter({ text: 'Bot codé par Shelby S. ! 🚀', iconURL: member.guild.iconURL({ dynamic: true }) })
                 .setTimestamp();
 
-            // Envoie de l'embed dans le channel "logs"
-            logChannel.send({ embeds: [embed] });
+            // on ignore les erreurs d’envoi pour ne pas bloquer la suite
+            logChannel.send({ embeds: [embed] }).catch(() => { });
         } else {
             console.error('Channel "logs" introuvable dans le serveur.');
         }
 
+        // 3) Autorole depuis la DB (db.query)
         const guildId = member.guild.id;
-
         try {
-            // Connexion à la base de données
-            const connection = await mysql.createConnection(dbConfig);
-
-            // Récupère l'ID du rôle automatique configuré pour le serveur
-            const [rows] = await connection.execute(
-                `SELECT autorole FROM serverconfig WHERE server_id = ?`,
+            const [rows] = await db.query(
+                'SELECT autorole FROM serverconfig WHERE server_id = ? LIMIT 1',
                 [guildId]
             );
 
-            await connection.end();
-
-            if (rows.length === 0 || !rows[0].autorole) {
+            if (!rows.length || !rows[0].autorole) {
                 console.log(`Aucun rôle automatique configuré pour le serveur ${guildId}.`);
                 return;
             }
@@ -66,17 +56,15 @@ module.exports = {
             const roleId = rows[0].autorole;
             const role = member.guild.roles.cache.get(roleId);
 
-            // Vérifier si le rôle existe dans le cache des rôles du serveur
             if (!role) {
-                console.error(`Le rôle avec l'ID ${roleId} n'existe pas dans le serveur ${guildId}.`);
+                console.error(`Le rôle avec l'ID ${roleId} est introuvable sur ${guildId}.`);
                 return;
             }
 
-            // Ajouter le rôle au nouveau membre
             await member.roles.add(role);
-            console.log(`Rôle automatique attribué au membre ${member.user.tag} sur le serveur ${member.guild.name}.`);
+            console.log(`Rôle automatique "${role.name}" attribué à ${member.user.tag} sur ${member.guild.name}.`);
         } catch (error) {
-            console.error('Erreur lors de l\'ajout de l\'autorole :', error);
+            console.error("Erreur lors de l'attribution de l'autorole :", error);
         }
     },
 };
