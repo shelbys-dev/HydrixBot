@@ -93,6 +93,22 @@ process.on('exit', (code) => {
     saveConfig();
 });
 
-
 // Connexion du bot
 client.login(process.env.TOKEN);
+
+const express = require('express');
+const app = express();
+const PORT = process.env.API_PORT || 3001;
+
+app.get('/api/stats', (req, res) => {
+  const totalGuilds = client.guilds.cache.size;
+  const totalMembers = client.guilds.cache.reduce((acc, guild) => acc + guild.memberCount, 0);
+
+  res.json({
+    guilds: totalGuilds,
+    members: totalMembers,
+    updatedAt: new Date().toISOString(),
+  });
+});
+
+app.listen(PORT, () => console.log(`✅ API stats démarrée sur le port ${PORT}`));
