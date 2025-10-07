@@ -1,139 +1,178 @@
-# **Hydra**
+# Bot Discord
 
-![Node.js](https://img.shields.io/badge/Node.js-v16+-green.svg) ![Discord.js](https://img.shields.io/badge/Discord.js-v14-blue.svg)
+**Bot Discord** est un bot multifonction pour Discord, développé avec Node.js et la bibliothèque [discord.js](https://discord.js.org). Ce dépôt contient le code source du bot utilisé par mes différentes communautés (Hydaria, BountyFac, LGBT Ensemble, etc.).
 
-## **Table des matières**
-- [Présentation](#présentation)
-- [Fonctionnalités](#fonctionnalités)
-- [Prérequis](#prérequis)
-- [Installation](#installation)
-- [Structure du projet](#structure-du-projet)
-- [Commandes](#commandes)
-- [Contribuer](#contribuer)
-- [Licence](#licence)
+> Dernière mise à jour : 22 septembre 2025
 
 ---
 
-## **Présentation**
+## ⚡️ Aperçu
 
-Bienvenue dans **CHAT Typique**, un bot Discord conçu pour faciliter la modération, ajouter une touche de fun à vos serveurs et répondre à vos besoins spécifiques ! 🎉
+Fonctionnalités principales :
 
-Ce bot utilise la bibliothèque [Discord.js](https://discord.js.org) et est structuré pour être facile à étendre et à maintenir.
-
----
-
-## **Fonctionnalités**
-
-- Configuration automatique d’un canal de **logs** avec la commande `/setup`.
-- Commande `/ping` pour tester si le bot est opérationnel.
-- Commande d'aide interactive : Récupérez une liste des commandes avec /help.
-- Prise en charge des commandes slash modernes avec une structure modulaire.
-- Facile à étendre grâce à une architecture bien organisée.
+- Gestion centralisée de la configuration serveur (SQL, pool MySQL)
+- Commandes slash et interactions (modals, boutons, select menus)
+- Système d'autorole, autoroles configurables par serveur
+- Messages automatiques planifiés (enable/disable/config)
+- Gestion de liens dynamique (ajout / suppression / affichage)
+- Système de niveaux / XP et leaderboard
+- Modération & gestion des reports via réactions
+- Création dynamique de salons vocaux privés
 
 ---
 
-## **Prérequis**
+## 🧰 Prérequis
 
-Avant d'installer et de faire fonctionner le bot, assurez-vous d’avoir les éléments suivants :
-
-- **Node.js** version 16 ou supérieure
-  - [Télécharger Node.js](https://nodejs.org)
-- Une clé **bot token** de l’API Discord
-  - Obtention d’un token sur le [portail des développeurs Discord](https://discord.com/developers/applications)
-- **npm** ou **yarn** (inclus avec Node.js)
+- Node.js >= 18
+- MySQL 5.7+ (ou compatible)
+- Un token de bot Discord et un Application ID
+- (Optionnel) PM2 / Docker pour le déploiement
 
 ---
 
-## **Installation**
+## 🚀 Installation rapide
 
-1. Clonez ce projet depuis GitHub :
-   ```bash
-   git clone https://github.com/votre-utilisateur/nom-du-repo.git
-   cd nom-du-repo
-   ```
+```bash
+# cloner le repo
+git clone git@git.lehub.tf:ShelbyDev.fr/HydrixBot.git
+cd HydrixBot
 
-2. Installez les dépendances :
-   ```bash
-   npm install
-   ```
-
-3. Créez un fichier `.env` pour stocker vos informations sensibles :
-   ```bash
-   touch .env
-   ```
-   Ajoutez-y vos variables :
-   ```
-   TOKEN=Votre_Token_Ici
-   CLIENT_ID=Votre_Client_ID_Ici
-   GUILD_ID=Votre_Guild_ID_Ici
-   ```
-
-4. Démarrez le bot :
-   ```bash
-   node index.js
-   ```
-
----
-
-## **Structure du projet**
-
-Voici comment le projet est organisé :
-
+# installer les dépendances
+npm install
 ```
-.
-├── commands/                  # Commandes du bot (modulaires)
-│   ├── ping.js                # Commande "ping"
-│   ├── setup.js               # Commande "setup"
-├── events/                    # Gestion des événements Discord.js
-│   ├── interactionCreate.js   # Interaction avec les commandes
-│   ├── ready.js               # Événement "ready"
-├── utils/                     # Fonctionnalités utilitaires (facultatif)
-│   └── logger.js              # Gestion des logs
-├── index.js                   # Point d'entrée principal
-├── .env                       # Fichier des variables sensibles
-├── package.json               # Dépendances du projet
-└── README.md                  # Documentation
+
+Copiez ensuite `.env.example` en `.env` et configurez les variables (exemples ci‑dessous).
+
+---
+
+## ⚙️ Variables d'environnement (exemple)
+
+```env
+# Discord
+TOKEN=your_discord_bot_token
+CLIENT_ID=your_client_id
+GUILD_ID=optional_guild_for_dev
+
+# MySQL
+DB_HOST=127.0.0.1
+DB_USER=bot_user
+DB_PASSWORD=secret
+DB_NAME=hydradev
+DB_PORT=3306
+
+# Options
+NODE_ENV=production
+PREFIX=! # si vous utilisez un prefix fallback
+```
+
+> Remarque : le projet utilise un pool MySQL (`mysql2/promise`) pour la stabilité en production.
+
+---
+
+## 🗂️ Base de données
+
+Le schéma SQL initial (hydradev.sql) contient les tables nécessaires :
+- `servers` : configuration par serveur (salons, rôles, options)
+- `links` : liens configurables
+- `users_xp` : XP et niveaux
+- `automessages` : configuration des messages automatisés
+
+Importer le fichier SQL fourni pour initialiser la base :
+
+```bash
+mysql -u root -p hydra < hydra.sql
 ```
 
 ---
 
-## **Commandes**
+## 🧭 Commandes principales
 
-| Commande      | Description                                        | Permissions Requises      |
-|---------------|----------------------------------------------------|---------------------------|
-| `/ping`       | Répond "Pong !" pour vérifier le statut du bot.    | *Aucune*                  |
-| `/setup`      | Configure un salon "logs" pour surveiller les actions de modération. | **Administrateur**        |
+La majorité des commandes sont des slash-commands. Exemple :
 
----
+- `/config setup` — initialise une configuration serveur (création des entrées en DB)
+- `/config liens add|remove|list` — gestion des liens publics
+- `/config automessage` — config d'envoi automatique
+- `/enableautomessage` / `/disableautomessage` — activer/désactiver
+- `/config roles` — définir rôles Admin / Mute
+- `/config autorole` — définir rôle à assigner aux nouveaux membres
+- `/ping` — latence du bot
+- `/leaderboard` — classement des utilisateurs par XP
+- `/purge` — suppression massive (nuke/soft) — nécessite permissions administrateur
 
-## **Contribuer**
-
-Les contributions sont les bienvenues ! 🙌 Si vous souhaitez suggérer des améliorations ou signaler des bugs :
-
-1. Forkez ce repo.
-2. Créez une nouvelle branche pour vos modifications.
-3. Soumettez une pull request (PR).
-
----
-
-## **Licence**
-
-Ce projet est sous [Licence MIT](LICENSE). Vous pouvez librement l'utiliser, le modifier et le distribuer !
+> Voir le dossier `commands/` pour la liste complète et la documentation interne.
 
 ---
 
-## **Auteur**
+## 🛠️ Lancement & Développement
 
-Conçu et développé par **Shelby**.  
-[Voir le dépôt Gitea](https://git.gitpushf.uk/SeguraS/Bot_CHAT_Typique) pour plus de détails.
+En local (mode développement) :
+
+```bash
+# pour lancer le bot
+npm start
+
+# ou si vous avez un script dev (nodemon)
+npm run dev
+```
+
+Déploiement recommandé : PM2 ou Docker.
+
+Exemple PM2 :
+
+```bash
+pm install -g pm2
+pm run build # si vous avez un step build
+pm start
+pm2 start ecosystem.config.js
+```
+
+Exemple Docker (basique) :
+
+```dockerfile
+FROM node:20
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --production
+COPY . .
+CMD ["node","index.js"]
+```
 
 ---
 
-### **Améliorations futures**
+## ✅ Tests & Debug
 
-Quelques idées pour développer ce bot à l'avenir :
-- Ajouter plus de commandes (modération avancée, jeux, utilitaires).
-- Gérer des variables sauvegardées via une base de données (MongoDB, SQLite…).
-- Créer des rapports d’activités hebdomadaires pour les administrateurs.
+- Activez les logs (console) pour surveiller les erreurs de connection MySQL ou permissions Discord.
+- Vérifiez que les intents et partials nécessaires sont activés dans le portail Discord (GUILD_MEMBERS, MESSAGE_CONTENT si nécessaire pour certaines fonctionnalités).
+- Erreurs fréquentes : `TypeError: Cannot read properties of undefined (reading 'channels')` — vérifier que `interaction.guild` n'est pas null et que la configuration serveur est initialisée.
 
-Si vous avez des suggestions, vous pouvez [ouvrir une issue ici](https://git.gitpushf.uk/SeguraS/Bot_CHAT_Typique/issues).
+---
+
+## ♻️ Migration JSON → MySQL
+
+Si vous venez d'une version qui utilisait des fichiers JSON pour stocker la config, un script de migration est prévu dans `data/migrations`. Ce script lit les JSON et les insère dans la base MySQL. Testez d'abord sur une instance de dev.
+
+---
+
+## 🤝 Contribution
+
+Contributions, issues et suggestions sont bienvenues !
+
+1. Forkez le dépôt
+2. Créez une branche (`git checkout -b feature/ma-fonctionnalite`)
+3. Soumettez une pull request
+
+Merci de respecter le guide de style (ESLint, conventions) et d'ajouter des tests si possible.
+
+---
+
+## 🧾 Licence
+
+Ce projet est distribué sous licence **MIT**.
+
+---
+
+## 📬 Contact
+
+Pour les questions techniques ou report de bugs : ouvrez une issue sur GitHub ou contactez Shelby (mainteneur).
+
+*Fait avec ❤️ par Shelby S.*
