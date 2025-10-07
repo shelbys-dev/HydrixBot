@@ -1,4 +1,3 @@
-// events/interactioncreate.js
 const { ChannelType, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
 
 // DB
@@ -112,6 +111,163 @@ module.exports = {
                 return interaction.editReply('❌ Erreur lors de la publication de l’annonce.');
             }
         }
+
+        // --- Tickets: bouton "ouvrir" -> modal ---
+        if (interaction.isButton() && interaction.customId.startsWith('ticket_open:')) {
+            const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
+            const [_, guildId] = interaction.customId.split(':');
+            if (guildId !== interaction.guildId) {
+                return interaction.reply({ content: 'Contexte invalide.', ephemeral: true });
+            }
+
+            const modal = new ModalBuilder()
+                .setCustomId(`ticket_reason:${guildId}`)
+                .setTitle('Ouvrir un ticket');
+
+            const reason = new TextInputBuilder()
+                .setCustomId('reason')
+                .setLabel('Motif / Détail')
+                .setStyle(TextInputStyle.Paragraph)
+                .setRequired(true)
+                .setMaxLength(1000)
+                .setPlaceholder("Décris ton problème, lien/salon concerné, etc.");
+
+            modal.addComponents(new ActionRowBuilder().addComponents(reason));
+            return interaction.showModal(modal);
+        }
+
+        // --- Tickets: modal soumis -> créer le salon ---
+        if (interaction.isModalSubmit() && interaction.customId.startsWith('ticket_reason:')) {
+            await interaction.deferReply({ ephemeral: true });
+
+            const [_, guildId] = interaction.customId.split(':');
+            if (guildId !== interaction.guildId) {
+                return interaction.editReply('Contexte invalide.');
+            }
+
+            const reason = interaction.fields.getTextInputValue('reason')?.trim() || 'Sans motif';
+            const guild = interaction.guild;
+
+            try {
+                // 1) Catégorie "Tickets" (créée si absente)
+                let category = guild.channels.cache.find(
+                    c => c.type === 4 && c.name.toLowerCase() === 'tickets'
+                );
+                if (!category) {
+                    category = await guild.channels.create({
+                        name: 'Tickets',
+                        type: 4, // GuildCategory
+                    });
+                }
+
+                // 2) Liste des rôles Admin
+                const adminRoles = guild.roles.cache.filter(r => r.permissions.has(PermissionFlagsBits.Administrator));
+
+                // 3) Créer le salon privé
+                const safeUser = interaction.user.username.toLowerCase().replace(/[^a-z0-9_-]/g, '-').slice(0, 20);
+                const channelName = `ticket-${safeUser}-${interaction.user.id.slice(-4)}`;
+
+                const permissionOverwrites = [
+                    // everybody = no view
+                    { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
+                    // bot
+                    {
+                        id: guild.members.me.id, allow: [
+                            PermissionFlagsBits.ViewChannel,
+                            PermissionFlagsBits.SendMessages,
+                            PermissionFlagsBits.ReadMessageHistory,
+                            PermissionFlagsBits.EmbedLinks,
+                            PermissionFlagsBits.AttachFiles,
+                            PermissionFlagsBits.ManageChannels,
+                            PermissionFlagsBits.ManageMessages,
+                        ]
+                    },
+                    // demandeur
+                    {
+                        id: interaction.user.id, allow: [
+                            PermissionFlagsBits.ViewChannel,
+                            PermissionFlagsBits.SendMessages,
+                            PermissionFlagsBits.ReadMessageHistory,
+                            PermissionFlagsBits.AttachFiles,
+                            PermissionFlagsBits.EmbedLinks,
+                        ]
+                    },
+                ];
+
+                // rôles admin : accès
+                for (const role of adminRoles.values()) {
+                    permissionOverwrites.push({
+                        id: role.id,
+                        allow: [
+                            PermissionFlagsBits.ViewChannel,
+                            PermissionFlagsBits.SendMessages,
+                            PermissionFlagsBits.ReadMessageHistory,
+                            PermissionFlagsBits.AttachFiles,
+                            PermissionFlagsBits.EmbedLinks,
+                            PermissionFlagsBits.ManageMessages,
+                        ],
+                    });
+                }
+
+                const channel = await guild.channels.create({
+                    name: channelName,
+                    type: 0, // GuildText
+                    parent: category.id,
+                    permissionOverwrites,
+                    reason: `Ticket ouvert par ${interaction.user.tag}`,
+                });
+
+                // 4) Message d'accueil + bouton fermer
+                const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+
+                const emb = new EmbedBuilder()
+                    .setColor(0x2ECC71)
+                    .setTitle('🎫 Ticket ouvert')
+                    .setDescription(
+                        `Bonjour ${interaction.user}, un membre de l’équipe va te répondre.\n\n**Motif** :\n${reason}`
+                    )
+                    .setTimestamp();
+
+                const closeRow = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId(`ticket_close:${channel.id}:${interaction.user.id}`)
+                        .setLabel('Fermer le ticket')
+                        .setEmoji('🔒')
+                        .setStyle(ButtonStyle.Danger)
+                );
+
+                await channel.send({ content: `${interaction.user}`, embeds: [emb], components: [closeRow] });
+
+                return interaction.editReply(`✅ Ton ticket est ouvert : <#${channel.id}>`);
+            } catch (err) {
+                console.error('Ticket create error:', err);
+                return interaction.editReply('❌ Impossible de créer le ticket (permissions ?).');
+            }
+        }
+
+        // --- Tickets: fermer le ticket ---
+        if (interaction.isButton() && interaction.customId.startsWith('ticket_close:')) {
+            const [_, channelId, ownerId] = interaction.customId.split(':');
+            const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.Administrator);
+            const isOwner = interaction.user.id === ownerId;
+
+            if (!isAdmin && !isOwner) {
+                return interaction.reply({ content: "❌ Seul l'initiateur du ticket ou un admin peut le fermer.", ephemeral: true });
+            }
+
+            const channel = interaction.guild.channels.cache.get(channelId) ||
+                await interaction.guild.channels.fetch(channelId).catch(() => null);
+            if (!channel) {
+                return interaction.reply({ content: '❌ Salon introuvable.', ephemeral: true });
+            }
+
+            await interaction.reply({ content: '🔒 Fermeture du ticket dans 10 secondes…', ephemeral: true });
+            try {
+                await channel.send('🔒 Le ticket va être supprimé dans **10s**.');
+                setTimeout(() => channel.delete('Ticket fermé').catch(() => { }), 10_000);
+            } catch { }
+        }
+
 
         // --- Slash commands classiques ---
         if (!interaction.isChatInputCommand()) return;
