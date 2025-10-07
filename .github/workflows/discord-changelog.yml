@@ -12,45 +12,38 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Debug (optionnel)
+        run: |
+          echo "EVENT PATH: $GITHUB_EVENT_PATH"
+          test -f "$GITHUB_EVENT_PATH" && echo "✔ Fichier trouvé" || (echo "✖ Fichier manquant" && exit 1)
+
       - name: Build Discord embed payload
         id: payload
         shell: bash
-        env:
-          EV_PATH: ${{ github.event_path }}
         run: |
-          # --- Données de l’événement ---
+          # --- Données depuis le fichier d'événement fourni par GitHub ---
           REPO="${{ github.repository }}"
           BRANCH="${GITHUB_REF_NAME}"
-          COMPARE_URL=$(jq -r '.compare' "$EV_PATH")
+          COMPARE_URL=$(jq -r '.compare' "$GITHUB_EVENT_PATH")
           ACTOR="${{ github.actor }}"
           AVATAR_URL="https://github.com/${ACTOR}.png?size=128"
 
-          # Commits -> liste markdown (max 15, messages sur une ligne)
-          COMMITS=$(
-            jq -r '.commits[] |
-              "- [" + (.message|gsub("\\n"; " ")|sub("\\s+$";"")) + "](" + .url + ") — **" + .author.name + "** (`" + (.id[0:7]) + "`)"' \
-              "$EV_PATH" \
-            | head -n 15
-          )
+          # Liste des commits (max 15), une ligne = message (sans \n), lien + auteur + sha court
+          COMMITS=$(jq -r \
+            '.commits[] |
+              "- [" + (.message | gsub("\\n"; " ") | sub("\\s+$";"")) + "](" + .url + ") — **" + .author.name + "** (`" + (.id[0:7]) + "`)"' \
+            "$GITHUB_EVENT_PATH" | head -n 15 )
 
-          # Par sécurité, tronque la description (Discord max 4096)
-          DESC="$(printf "%s\n" "$COMMITS")"
-          DESC="${DESC:0:3500}"
+          [ -z "$COMMITS" ] && COMMITS="(aucun message de commit fourni)"
 
-          # Titre / footer / couleur
+          # Tronque à ~3500 chars pour rester safe avec la limite 4096 de Discord
+          DESC="${COMMITS:0:3500}"
+
           TITLE="🚀 ${REPO} — push sur ${BRANCH}"
-          FOOTER="${REPO}"
-          COLOR=1907283 # bleu canard (decimal)
-
-          # Timestamp ISO (UTC)
+          COLOR=1907283
           TS="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
-          # Si pas de commits (cas rares)
-          if [ -z "$DESC" ]; then
-            DESC="(aucun message de commit fourni)"
-          fi
-
-          # Construction JSON pour Discord
+          # Construit le JSON final proprement avec jq
           jq -n \
             --arg username "GitHub → ${REPO}" \
             --arg avatar   "$AVATAR_URL" \
@@ -59,7 +52,7 @@ jobs:
             --arg desc     "$DESC" \
             --arg branch   "$BRANCH" \
             --arg pusher   "$ACTOR" \
-            --arg footer   "$FOOTER" \
+            --arg footer   "$REPO" \
             --arg ts       "$TS" \
             --argjson color $COLOR \
             '{
@@ -81,13 +74,9 @@ jobs:
               ]
             }' > discord.json
 
-          echo "payload=$(cat discord.json | base64 -w0)" >> $GITHUB_OUTPUT
-
       - name: Send embed to Discord
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          PAYLOAD_B64: ${{ steps.payload.outputs.payload }}
         run: |
-          echo "$PAYLOAD_B64" | base64 -d > /tmp/discord.json
           curl -sS -X POST -H "Content-Type: application/json" \
-               -d @/tmp/discord.json "$DISCORD_WEBHOOK_URL"
+               -d @discord.json "$DISCORD_WEBHOOK_URL"
