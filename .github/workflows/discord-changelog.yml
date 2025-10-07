@@ -1,0 +1,93 @@
+name: Discord Changelog (Embed)
+
+on:
+  push:
+    branches:
+      - master
+      - dev
+      - "release/**"
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Build Discord embed payload
+        id: payload
+        shell: bash
+        env:
+          EV_PATH: ${{ github.event_path }}
+        run: |
+          # --- Données de l’événement ---
+          REPO="${{ github.repository }}"
+          BRANCH="${GITHUB_REF_NAME}"
+          COMPARE_URL=$(jq -r '.compare' "$EV_PATH")
+          ACTOR="${{ github.actor }}"
+          AVATAR_URL="https://github.com/${ACTOR}.png?size=128"
+
+          # Commits -> liste markdown (max 15, messages sur une ligne)
+          COMMITS=$(
+            jq -r '.commits[] |
+              "- [" + (.message|gsub("\\n"; " ")|sub("\\s+$";"")) + "](" + .url + ") — **" + .author.name + "** (`" + (.id[0:7]) + "`)"' \
+              "$EV_PATH" \
+            | head -n 15
+          )
+
+          # Par sécurité, tronque la description (Discord max 4096)
+          DESC="$(printf "%s\n" "$COMMITS")"
+          DESC="${DESC:0:3500}"
+
+          # Titre / footer / couleur
+          TITLE="🚀 ${REPO} — push sur ${BRANCH}"
+          FOOTER="${REPO}"
+          COLOR=1907283 # bleu canard (decimal)
+
+          # Timestamp ISO (UTC)
+          TS="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+          # Si pas de commits (cas rares)
+          if [ -z "$DESC" ]; then
+            DESC="(aucun message de commit fourni)"
+          fi
+
+          # Construction JSON pour Discord
+          jq -n \
+            --arg username "GitHub → ${REPO}" \
+            --arg avatar   "$AVATAR_URL" \
+            --arg title    "$TITLE" \
+            --arg url      "$COMPARE_URL" \
+            --arg desc     "$DESC" \
+            --arg branch   "$BRANCH" \
+            --arg pusher   "$ACTOR" \
+            --arg footer   "$FOOTER" \
+            --arg ts       "$TS" \
+            --argjson color $COLOR \
+            '{
+              username: $username,
+              avatar_url: $avatar,
+              embeds: [
+                {
+                  title: $title,
+                  url: $url,
+                  description: $desc,
+                  color: $color,
+                  fields: [
+                    { name: "Branche", value: $branch, inline: true },
+                    { name: "Auteur du push", value: $pusher, inline: true }
+                  ],
+                  footer: { text: $footer },
+                  timestamp: $ts
+                }
+              ]
+            }' > discord.json
+
+          echo "payload=$(cat discord.json | base64 -w0)" >> $GITHUB_OUTPUT
+
+      - name: Send embed to Discord
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          PAYLOAD_B64: ${{ steps.payload.outputs.payload }}
+        run: |
+          echo "$PAYLOAD_B64" | base64 -d > /tmp/discord.json
+          curl -sS -X POST -H "Content-Type: application/json" \
+               -d @/tmp/discord.json "$DISCORD_WEBHOOK_URL"
