@@ -7,7 +7,9 @@ const {
     ActionRowBuilder,
     EmbedBuilder,
     ButtonBuilder,
-    ButtonStyle
+    ButtonStyle,
+    StringSelectMenuBuilder,
+    AttachmentBuilder
 } = require('discord.js');
 
 // DB
@@ -19,6 +21,119 @@ function splitForDiscord(text, max = MAX_EMBED) {
     const chunks = [];
     for (let i = 0; i < text.length; i += max) chunks.push(text.slice(i, i + max));
     return chunks;
+}
+
+function formatLabel(t) {
+    const id = `#${t.id}`;
+    const who = t.opener_tag || t.opener_user_id;
+    const reason = (t.reason || '—').replace(/\s+/g, ' ').slice(0, 60);
+    const status = t.status === 'closed' ? '🔒' : '🟢';
+    return `${status} ${id} · ${who} · ${reason}`;
+}
+function ts(d) { try { return (d?.toISOString?.() || d) } catch { return String(d || '—'); } }
+
+// Split Markdown en plusieurs fichiers si > 8MB (≈7.5MB sécurité)
+const CHUNK_LIMIT = Math.floor(7.5 * 1024 * 1024);
+function splitTranscriptMarkdown(md, limitBytes = CHUNK_LIMIT) {
+    const parts = [];
+    const encoder = new TextEncoder();
+    const lines = md.split('\n');
+    let current = '';
+    let currentBytes = 0;
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i] + (i < lines.length - 1 ? '\n' : '');
+        const bytes = encoder.encode(line).length;
+
+        if (bytes > limitBytes) {
+            // ligne énorme → découpe brutale
+            let remaining = line;
+            while (encoder.encode(remaining).length > limitBytes) {
+                let low = 0, high = remaining.length;
+                while (low < high) {
+                    const mid = Math.floor((low + high) / 2);
+                    const seg = remaining.slice(0, mid);
+                    const size = encoder.encode(seg).length;
+                    if (size <= limitBytes) low = mid + 1; else high = mid;
+                }
+                const seg = remaining.slice(0, low - 1);
+                if (current) { parts.push(current); current = ''; currentBytes = 0; }
+                parts.push(seg);
+                remaining = remaining.slice(seg.length);
+            }
+            if (encoder.encode(remaining).length > (limitBytes - currentBytes)) {
+                if (current) { parts.push(current); current = ''; currentBytes = 0; }
+            }
+            current += remaining;
+            currentBytes = encoder.encode(current).length;
+            continue;
+        }
+
+        if (currentBytes + bytes <= limitBytes) {
+            current += line;
+            currentBytes += bytes;
+        } else {
+            parts.push(current);
+            current = line;
+            currentBytes = bytes;
+        }
+    }
+    if (current) parts.push(current);
+    return parts;
+}
+
+async function buildTicketPageComponents(guildId, page = 0) {
+    const PAGE_SIZE = 25; // max Discord Select
+    const offset = page * PAGE_SIZE;
+
+    // Récup `serverconfig_id` puis les tickets de ce serveur (tri récents -> anciens)
+    const [scRows] = await db.query('SELECT id FROM serverconfig WHERE server_id = ? LIMIT 1', [guildId]);
+    if (!scRows.length) {
+        return { components: [], meta: { total: 0, page, pageSize: PAGE_SIZE } };
+    }
+    const serverconfigId = scRows[0].id;
+
+    const [countRows] = await db.query('SELECT COUNT(*) AS n FROM tickets WHERE serverconfig_id = ?', [serverconfigId]);
+    const total = countRows[0].n || 0;
+
+    const [rows] = await db.query(
+        `SELECT id, opener_user_id, opener_tag, reason, status
+       FROM tickets
+      WHERE serverconfig_id = ?
+      ORDER BY id DESC
+      LIMIT ? OFFSET ?`,
+        [serverconfigId, PAGE_SIZE, offset]
+    );
+
+    const options = rows.map(t => ({
+        label: formatLabel(t).slice(0, 100),
+        value: String(t.id),
+        description: (t.reason || '—').replace(/\s+/g, ' ').slice(0, 100),
+    }));
+
+    const menu = new StringSelectMenuBuilder()
+        .setCustomId(`ticket_export_select:${guildId}:${page}`)
+        .setPlaceholder(options.length ? 'Choisis un ticket…' : 'Aucun ticket')
+        .setMinValues(1)
+        .setMaxValues(1)
+        .setDisabled(options.length === 0)
+        .addOptions(options);
+
+    const rowMenu = new ActionRowBuilder().addComponents(menu);
+
+    const rowNav = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId(`ticket_export_page:${guildId}:${Math.max(page - 1, 0)}`)
+            .setStyle(ButtonStyle.Secondary)
+            .setLabel('◀ Précédent')
+            .setDisabled(page === 0),
+        new ButtonBuilder()
+            .setCustomId(`ticket_export_page:${guildId}:${page + 1}`)
+            .setStyle(ButtonStyle.Secondary)
+            .setLabel('Suivant ▶')
+            .setDisabled((offset + PAGE_SIZE) >= total),
+    );
+
+    return { components: [rowMenu, rowNav], meta: { total, page, pageSize: PAGE_SIZE } };
 }
 
 module.exports = {
@@ -380,6 +495,117 @@ module.exports = {
             return;
         }
 
+        // Quand /ticket export a été lancé, on détecte le message éphémère et on injecte l'UI
+        if (interaction.isChatInputCommand?.() && interaction.commandName === 'ticket' && interaction.options.getSubcommand() === 'export') {
+            // Déférer si pas déjà fait par la commande
+            if (!interaction.deferred && !interaction.replied) {
+                await interaction.deferReply({ ephemeral: true });
+            }
+
+            const { components } = await buildTicketPageComponents(interaction.guildId, 0);
+
+            return interaction.editReply({
+                content: 'Sélectionne un ticket à exporter :',
+                components,
+            });
+        }
+
+
+        if (interaction.isButton() && interaction.customId.startsWith('ticket_export_page:')) {
+            const [, guildId, pageStr] = interaction.customId.split(':');
+            if (guildId !== interaction.guildId) {
+                return interaction.reply({ content: 'Contexte invalide.', ephemeral: true });
+            }
+            const page = Math.max(0, parseInt(pageStr, 10) || 0);
+
+            const { components } = await buildTicketPageComponents(interaction.guildId, page);
+            // On édite le message éphémère du user (le plus récent)
+            return interaction.update({
+                content: `Sélectionne un ticket à exporter : (page ${page + 1})`,
+                components,
+            });
+        }
+
+        if (interaction.isStringSelectMenu() && interaction.customId.startsWith('ticket_export_select:')) {
+            const [, guildId/*, pageStr*/] = interaction.customId.split(':');
+            if (guildId !== interaction.guildId) {
+                return interaction.reply({ content: 'Contexte invalide.', ephemeral: true });
+            }
+
+            const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.Administrator);
+            if (!isAdmin) {
+                return interaction.reply({ content: "❌ Seuls les administrateurs peuvent exporter un transcript.", ephemeral: true });
+            }
+
+            const ticketId = parseInt(interaction.values?.[0], 10);
+            await interaction.deferReply({ ephemeral: true });
+
+            // Récup transcript
+            const [rows] = await db.query(
+                `SELECT t.id, t.channel_id, t.created_at, t.closed_at, t.transcript_md, t.status,
+            sc.server_id, t.opener_user_id, t.opener_tag, t.reason
+       FROM tickets t
+       JOIN serverconfig sc ON sc.id = t.serverconfig_id
+      WHERE t.id = ?
+      LIMIT 1`,
+                [ticketId]
+            );
+
+            if (!rows.length) {
+                return interaction.editReply(`❌ Ticket #${ticketId} introuvable.`);
+            }
+
+            const t = rows[0];
+
+            if (!t.transcript_md || t.transcript_md.length === 0) {
+                return interaction.editReply(`ℹ️ Le ticket #${ticketId} n’a pas encore de transcript enregistré.\nStatut actuel: **${t.status}**`);
+            }
+
+            const parts = splitTranscriptMarkdown(t.transcript_md, CHUNK_LIMIT);
+
+            const headerBase =
+                `# Transcript — ticket #${t.id}\n` +
+                `Serveur: ${t.server_id}\n` +
+                `Salon: ${t.channel_id}\n` +
+                `Ouvert par: ${t.opener_tag || t.opener_user_id}\n` +
+                (t.reason ? `Motif: ${(t.reason || '').replace(/\s+/g, ' ').slice(0, 200)}\n` : '') +
+                `Période: ${ts(t.created_at)} → ${ts(t.closed_at) || '—'}\n\n`;
+
+            const encoder = new TextEncoder();
+            const files = [];
+            for (let i = 0; i < parts.length; i++) {
+                const head = `## Partie ${i + 1}/${parts.length}\n\n`;
+                let body = parts[i];
+                let content = headerBase + head + body;
+
+                if (encoder.encode(content).length > CHUNK_LIMIT) {
+                    // rarissime: re-split du chunk courant après ajout du header
+                    const subparts = splitTranscriptMarkdown(body, CHUNK_LIMIT - encoder.encode(headerBase + head).length);
+                    for (let j = 0; j < subparts.length; j++) {
+                        const content2 = headerBase + `## Partie ${i + 1}.${j + 1}/${parts.length}\n\n` + subparts[j];
+                        files.push({
+                            name: `transcript-ticket-${t.id}-part-${String(i + 1).padStart(2, '0')}-${j + 1}.md`,
+                            buffer: Buffer.from(content2, 'utf8'),
+                        });
+                    }
+                } else {
+                    files.push({
+                        name: `transcript-ticket-${t.id}-part-${String(i + 1).padStart(2, '0')}.md`,
+                        buffer: Buffer.from(content, 'utf8'),
+                    });
+                }
+            }
+
+            const attachments = files.map(f => new AttachmentBuilder(f.buffer, { name: f.name }));
+
+            return interaction.editReply({
+                content:
+                    parts.length === 1
+                        ? `📝 Transcript du **ticket #${t.id}** (1 fichier)`
+                        : `📝 Transcript du **ticket #${t.id}** — fractionné en **${attachments.length} fichiers**.`,
+                files: attachments,
+            });
+        }
 
         // --- Slash commands classiques ---
         if (!interaction.isChatInputCommand()) return;

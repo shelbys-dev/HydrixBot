@@ -20,12 +20,7 @@ module.exports = {
         )
         .addSubcommand(s =>
             s.setName('export')
-                .setDescription('Exporter le transcript Markdown d’un ticket')
-                .addIntegerOption(o =>
-                    o.setName('id')
-                        .setDescription('ID du ticket (colonne tickets.id)')
-                        .setRequired(true)
-                )
+                .setDescription('Exporter le transcript Markdown d’un ticket (sélection interactive)')
         ),
 
     async execute(interaction) {
@@ -65,134 +60,14 @@ module.exports = {
                 return interaction.reply({ content: "❌ Seuls les administrateurs peuvent exporter un transcript.", ephemeral: true });
             }
 
-            const ticketId = interaction.options.getInteger('id', true);
             await interaction.deferReply({ ephemeral: true });
 
-            const [rows] = await db.query(
-                `SELECT t.id, t.channel_id, t.created_at, t.closed_at, t.transcript_md, sc.server_id
-       FROM tickets t
-       JOIN serverconfig sc ON sc.id = t.serverconfig_id
-      WHERE t.id = ?
-      LIMIT 1`,
-                [ticketId]
-            );
-
-            if (!rows.length) {
-                return interaction.editReply(`❌ Ticket #${ticketId} introuvable.`);
-            }
-
-            const t = rows[0];
-            if (!t.transcript_md || t.transcript_md.length === 0) {
-                return interaction.editReply(`ℹ️ Le ticket #${ticketId} n’a pas encore de transcript enregistré (probablement pas fermé).`);
-            }
-
-            // --- Helper: split par taille (UTF-8) en respectant les sauts de ligne si possible
-            const CHUNK_LIMIT = Math.floor(7.5 * 1024 * 1024); // ~7.5MB sécurité < 8MB
-            function splitTranscriptMarkdown(md, limitBytes) {
-                const parts = [];
-                const encoder = new TextEncoder();
-                const lines = md.split('\n');
-
-                let current = '';
-                let currentBytes = 0;
-
-                for (let i = 0; i < lines.length; i++) {
-                    const line = lines[i] + (i < lines.length - 1 ? '\n' : '');
-                    const bytes = encoder.encode(line).length;
-
-                    if (bytes > limitBytes) {
-                        // Ligne énorme -> découpe brutale par tranches d’octets
-                        let remaining = line;
-                        while (encoder.encode(remaining).length > limitBytes) {
-                            // on cherche une fenêtre qui tient
-                            let low = 0, high = remaining.length, mid, slice = remaining;
-                            // binary search approx pour rester performant
-                            while (low < high) {
-                                mid = Math.floor((low + high) / 2);
-                                const seg = remaining.slice(0, mid);
-                                const size = encoder.encode(seg).length;
-                                if (size <= limitBytes) low = mid + 1; else high = mid;
-                            }
-                            const seg = remaining.slice(0, low - 1);
-                            if (current) {
-                                parts.push(current);
-                                current = '';
-                                currentBytes = 0;
-                            }
-                            parts.push(seg);
-                            remaining = remaining.slice(seg.length);
-                        }
-                        // le reste tient
-                        if (encoder.encode(remaining).length > (limitBytes - currentBytes)) {
-                            if (current) {
-                                parts.push(current);
-                                current = '';
-                                currentBytes = 0;
-                            }
-                        }
-                        current += remaining;
-                        currentBytes = encoder.encode(current).length;
-                        continue;
-                    }
-
-                    if (currentBytes + bytes <= limitBytes) {
-                        current += line;
-                        currentBytes += bytes;
-                    } else {
-                        parts.push(current);
-                        current = line;
-                        currentBytes = bytes;
-                    }
-                }
-                if (current) parts.push(current);
-                return parts;
-            }
-
-            const parts = splitTranscriptMarkdown(t.transcript_md, CHUNK_LIMIT);
-
-            // Préfix (optionnel) dans chaque fichier : header de contexte + "Part X/N"
-            const headerBase =
-                `# Transcript — ticket #${t.id}\n` +
-                `Serveur: ${t.server_id}\n` +
-                `Salon: ${t.channel_id}\n` +
-                `Période: ${t.created_at?.toISOString?.() || t.created_at} → ${t.closed_at?.toISOString?.() || t.closed_at || '—'}\n\n`;
-
-            // On ajoute le header à chaque chunk en vérifiant la taille
-            const encoder = new TextEncoder();
-            const files = [];
-            for (let i = 0; i < parts.length; i++) {
-                const head = `## Partie ${i + 1}/${parts.length}\n\n`;
-                let body = parts[i];
-                let content = headerBase + head + body;
-
-                // Si le header fait dépasser la limite (très rare), on re-split juste ce chunk
-                if (encoder.encode(content).length > CHUNK_LIMIT) {
-                    const subparts = splitTranscriptMarkdown(body, CHUNK_LIMIT - encoder.encode(headerBase + head).length);
-                    for (let j = 0; j < subparts.length; j++) {
-                        const content2 = headerBase + `## Partie ${i + 1}.${j + 1}/${parts.length}\n\n` + subparts[j];
-                        files.push({
-                            name: `transcript-ticket-${t.id}-part-${String(i + 1).padStart(2, '0')}-${j + 1}.md`,
-                            buffer: Buffer.from(content2, 'utf8'),
-                        });
-                    }
-                } else {
-                    files.push({
-                        name: `transcript-ticket-${t.id}-part-${String(i + 1).padStart(2, '0')}.md`,
-                        buffer: Buffer.from(content, 'utf8'),
-                    });
-                }
-            }
-
-            // Transforme en attachments Discord
-            const { AttachmentBuilder } = require('discord.js');
-            const attachments = files.map(f => new AttachmentBuilder(f.buffer, { name: f.name }));
-
+            // On envoie un “squelette” éphémère; l’UI (menu + pagination) sera fournie par l’event handler
             return interaction.editReply({
-                content:
-                    parts.length === 1
-                        ? `📝 Transcript du **ticket #${t.id}** (1 fichier)`
-                        : `📝 Transcript du **ticket #${t.id}** — fractionné en **${attachments.length} fichiers**.`,
-                files: attachments,
+                content: "Sélectionne un ticket à exporter :",
+                components: [
+                    // placeholders; ils seront remplacés par l’event handler via editReply()
+                ],
             });
         }
     },
