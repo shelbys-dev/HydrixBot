@@ -1,4 +1,14 @@
-const { ChannelType, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
+const {
+    ChannelType,
+    PermissionFlagsBits,
+    ModalBuilder,
+    TextInputBuilder,
+    TextInputStyle,
+    ActionRowBuilder,
+    EmbedBuilder,
+    ButtonBuilder,
+    ButtonStyle
+} = require('discord.js');
 
 // DB
 const db = require('../data/db');
@@ -112,9 +122,20 @@ module.exports = {
             }
         }
 
-        // --- Tickets: bouton "ouvrir" -> modal ---
+        // --- helper: récupérer ou créer l'id de serverconfig pour une guilde ---
+        async function getOrCreateServerConfigId(guildId) {
+            // 1) try select
+            const [rows] = await db.query('SELECT id FROM serverconfig WHERE server_id = ?', [guildId]);
+            if (rows.length) return rows[0].id;
+            // 2) insert minimal (en supposant des colonnes NULL par défaut)
+            const [res] = await db.query('INSERT INTO serverconfig (server_id) VALUES (?)', [guildId]);
+            return res.insertId;
+        }
+
+        // =========================
+        // Tickets — Ouvrir (bouton)
+        // =========================
         if (interaction.isButton() && interaction.customId.startsWith('ticket_open:')) {
-            const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
             const [_, guildId] = interaction.customId.split(':');
             if (guildId !== interaction.guildId) {
                 return interaction.reply({ content: 'Contexte invalide.', ephemeral: true });
@@ -136,7 +157,9 @@ module.exports = {
             return interaction.showModal(modal);
         }
 
-        // --- Tickets: modal soumis -> créer le salon ---
+        // =========================
+        // Tickets — Création (modal)
+        // =========================
         if (interaction.isModalSubmit() && interaction.customId.startsWith('ticket_reason:')) {
             await interaction.deferReply({ ephemeral: true });
 
@@ -149,28 +172,30 @@ module.exports = {
             const guild = interaction.guild;
 
             try {
-                // 1) Catégorie "Tickets" (créée si absente)
-                let category = guild.channels.cache.find(
-                    c => c.type === 4 && c.name.toLowerCase() === 'tickets'
-                );
+                // 1) Catégorie "Tickets"
+                let category = guild.channels.cache.find(c => c.type === 4 && c.name.toLowerCase() === 'tickets');
                 if (!category) {
-                    category = await guild.channels.create({
-                        name: 'Tickets',
-                        type: 4, // GuildCategory
-                    });
+                    category = await guild.channels.create({ name: 'Tickets', type: 4 });
                 }
 
-                // 2) Liste des rôles Admin
+                // 2) Rôles admin
                 const adminRoles = guild.roles.cache.filter(r => r.permissions.has(PermissionFlagsBits.Administrator));
 
-                // 3) Créer le salon privé
+                // 3) Pré-insert DB (tickets) avec serverconfig_id
+                const serverconfigId = await getOrCreateServerConfigId(guild.id);
+                const now = new Date();
+                const [insertRes] = await db.query(
+                    `INSERT INTO tickets (serverconfig_id, channel_id, opener_user_id, opener_tag, reason, status, created_at)
+           VALUES (?, 'pending', ?, ?, ?, 'open', ?)`,
+                    [serverconfigId, interaction.user.id, interaction.user.tag, reason, now]
+                );
+                const ticketId = insertRes.insertId;
+
+                // 4) Permissions du salon
                 const safeUser = interaction.user.username.toLowerCase().replace(/[^a-z0-9_-]/g, '-').slice(0, 20);
                 const channelName = `ticket-${safeUser}-${interaction.user.id.slice(-4)}`;
-
                 const permissionOverwrites = [
-                    // everybody = no view
                     { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
-                    // bot
                     {
                         id: guild.members.me.id, allow: [
                             PermissionFlagsBits.ViewChannel,
@@ -182,7 +207,6 @@ module.exports = {
                             PermissionFlagsBits.ManageMessages,
                         ]
                     },
-                    // demandeur
                     {
                         id: interaction.user.id, allow: [
                             PermissionFlagsBits.ViewChannel,
@@ -193,8 +217,6 @@ module.exports = {
                         ]
                     },
                 ];
-
-                // rôles admin : accès
                 for (const role of adminRoles.values()) {
                     permissionOverwrites.push({
                         id: role.id,
@@ -209,25 +231,34 @@ module.exports = {
                     });
                 }
 
+                // 5) Créer le salon
                 const channel = await guild.channels.create({
                     name: channelName,
-                    type: 0, // GuildText
+                    type: 0,
                     parent: category.id,
                     permissionOverwrites,
                     reason: `Ticket ouvert par ${interaction.user.tag}`,
                 });
 
-                // 4) Message d'accueil + bouton fermer
-                const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+                // 6) MAJ channel_id en DB
+                await db.query(`UPDATE tickets SET channel_id = ? WHERE id = ?`, [channel.id, ticketId]);
 
+                // 7) Topic avec méta
+                const topicData = {
+                    ticketId,
+                    serverconfigId,
+                    ownerId: interaction.user.id,
+                    reason,
+                    createdAt: now.toISOString(),
+                };
+                try { await channel.setTopic(`TICKET_META::${JSON.stringify(topicData)}`); } catch { }
+
+                // 8) Message d'accueil + bouton fermer
                 const emb = new EmbedBuilder()
                     .setColor(0x2ECC71)
                     .setTitle('🎫 Ticket ouvert')
-                    .setDescription(
-                        `Bonjour ${interaction.user}, un membre de l’équipe va te répondre.\n\n**Motif** :\n${reason}`
-                    )
+                    .setDescription(`Bonjour ${interaction.user}, un membre de l’équipe va te répondre.\n\n**Motif** :\n${reason}`)
                     .setTimestamp();
-
                 const closeRow = new ActionRowBuilder().addComponents(
                     new ButtonBuilder()
                         .setCustomId(`ticket_close:${channel.id}:${interaction.user.id}`)
@@ -235,37 +266,118 @@ module.exports = {
                         .setEmoji('🔒')
                         .setStyle(ButtonStyle.Danger)
                 );
-
                 await channel.send({ content: `${interaction.user}`, embeds: [emb], components: [closeRow] });
 
-                return interaction.editReply(`✅ Ton ticket est ouvert : <#${channel.id}>`);
+                return interaction.editReply(`✅ Ton ticket est ouvert : <#${channel.id}> (id: ${ticketId})`);
             } catch (err) {
                 console.error('Ticket create error:', err);
                 return interaction.editReply('❌ Impossible de créer le ticket (permissions ?).');
             }
         }
 
-        // --- Tickets: fermer le ticket ---
+        // =========================
+        // Tickets — Fermer (bouton)
+        // =========================
         if (interaction.isButton() && interaction.customId.startsWith('ticket_close:')) {
             const [_, channelId, ownerId] = interaction.customId.split(':');
             const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.Administrator);
             const isOwner = interaction.user.id === ownerId;
-
             if (!isAdmin && !isOwner) {
                 return interaction.reply({ content: "❌ Seul l'initiateur du ticket ou un admin peut le fermer.", ephemeral: true });
             }
 
-            const channel = interaction.guild.channels.cache.get(channelId) ||
-                await interaction.guild.channels.fetch(channelId).catch(() => null);
+            const channel = interaction.guild.channels.cache.get(channelId)
+                || await interaction.guild.channels.fetch(channelId).catch(() => null);
             if (!channel) {
                 return interaction.reply({ content: '❌ Salon introuvable.', ephemeral: true });
             }
 
-            await interaction.reply({ content: '🔒 Fermeture du ticket dans 10 secondes…', ephemeral: true });
+            await interaction.deferReply({ ephemeral: true });
+
+            // a) Récup méta (ticketId / serverconfigId / reason)
+            let ticketId = null, meta = null;
             try {
-                await channel.send('🔒 Le ticket va être supprimé dans **10s**.');
-                setTimeout(() => channel.delete('Ticket fermé').catch(() => { }), 10_000);
+                const raw = channel.topic || '';
+                const m = raw.match(/^TICKET_META::(.+)/);
+                if (m) {
+                    meta = JSON.parse(m[1]);
+                    ticketId = meta.ticketId || null;
+                }
             } catch { }
+
+            // b) Fetch tous les messages (pagination)
+            const all = [];
+            let lastId = null;
+            while (true) {
+                const batch = await channel.messages.fetch({ limit: 100, before: lastId || undefined })
+                    .catch(() => null);
+                if (!batch || batch.size === 0) break;
+                all.push(...batch.map(m => m));
+                const last = batch.last();
+                lastId = last ? last.id : null;
+                if (batch.size < 100) break;
+            }
+            all.sort((a, b) => a.createdTimestamp - b.createdTimestamp);
+
+            // c) Build Markdown transcript
+            const esc = (s = '') => s
+                .replace(/[`*_~|]/g, '\\$&')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+            const lines = [];
+            lines.push(`# Transcript — ${channel.name}`);
+            lines.push(`Serveur: ${interaction.guild.name} (${interaction.guild.id})`);
+            lines.push(`Salon: #${channel.name} (${channel.id})`);
+            if (meta?.reason) lines.push(`Motif: ${esc(meta.reason)}`);
+            lines.push('');
+            for (const m of all) {
+                const time = new Date(m.createdTimestamp).toISOString();
+                const author = m.author?.tag || '???';
+                const content = m.content ? esc(m.content) : '';
+                lines.push(`**[${time}] ${author}**: ${content}`);
+                if (m.attachments?.size) {
+                    for (const at of m.attachments.values()) lines.push(`  • [fichier] ${at.url}`);
+                }
+                if (m.embeds?.length) lines.push(`  • (embed x${m.embeds.length})`);
+            }
+            const transcriptMd = lines.join('\n');
+
+            // d) Persistance DB (close + transcript)
+            const closedAt = new Date();
+            const closedBy = interaction.user.id;
+
+            if (!ticketId) {
+                // fallback si ancien ticket sans meta
+                const serverconfigId = await getOrCreateServerConfigId(interaction.guild.id);
+                const [res] = await db.query(
+                    `INSERT INTO tickets (serverconfig_id, channel_id, opener_user_id, opener_tag, reason, status, created_at, closed_at, closed_by, transcript_md)
+           VALUES (?, ?, ?, ?, ?, 'closed', ?, ?, ?, ?)`,
+                    [
+                        serverconfigId,
+                        channel.id,
+                        ownerId,
+                        null,
+                        meta?.reason || '—',
+                        new Date(channel.createdTimestamp),
+                        closedAt,
+                        closedBy,
+                        transcriptMd,
+                    ]
+                );
+                ticketId = res.insertId;
+            } else {
+                await db.query(
+                    `UPDATE tickets
+             SET status = 'closed', closed_at = ?, closed_by = ?, transcript_md = ?
+           WHERE id = ?`,
+                    [closedAt, closedBy, transcriptMd, ticketId]
+                );
+            }
+
+            await interaction.editReply({ content: `📝 Transcript enregistré (#${ticketId}). Le salon va être supprimé dans 10s.` });
+            try { await channel.send('🔒 Le ticket va être supprimé dans **10s**.'); } catch { }
+            setTimeout(() => channel.delete('Ticket fermé (transcript sauvegardé)').catch(() => { }), 10_000);
+            return;
         }
 
 
