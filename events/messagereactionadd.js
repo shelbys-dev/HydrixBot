@@ -161,6 +161,13 @@ module.exports = {
                     await db.query("DELETE FROM reactioncounts WHERE id = ?", [reactionId]);
                     await db.query("DELETE FROM users_reaction WHERE reactioncounts_id = ?", [reactionId]);
                 }
+            } else {
+                try {
+                    await reaction.users.remove(user.id);
+                    user.send({ content: "❌ Vous avez déjà signalé ce message.", ephemeral: true });
+                } catch (error) {
+                    console.error("Impossible de supprimer la réaction :", error);
+                }
             }
         }
     },
