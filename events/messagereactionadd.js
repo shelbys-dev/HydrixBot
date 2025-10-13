@@ -163,10 +163,17 @@ module.exports = {
                 }
             } else {
                 try {
+                    // enlève aussitôt la seconde réaction (nécessite Manage Messages sur le salon)
                     await reaction.users.remove(user.id);
-                    user.send({ content: "❌ Vous avez déjà signalé ce message.", ephemeral: true });
                 } catch (error) {
-                    console.error("Impossible de supprimer la réaction :", error);
+                    console.warn("Impossible de retirer la réaction (permissions ?) :", error);
+                }
+
+                // tente un DM d’information (sans 'ephemeral', réservé aux interactions)
+                try {
+                    await user.send("❌ Vous avez déjà signalé ce message.");
+                } catch (err) {
+                    // DM fermés : optionnel, on peut ignorer silencieusement
                 }
             }
         }
