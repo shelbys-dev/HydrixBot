@@ -607,6 +607,47 @@ module.exports = {
             });
         }
 
+        // ——— Rôle Button: toggle au clic ———
+        if (interaction.isButton() && interaction.customId?.startsWith('rb:toggle:')) {
+            try {
+                const [, , guildId, roleId] = interaction.customId.split(':');
+                const guild = interaction.guild;
+                if (!guild || guild.id !== guildId) {
+                    return interaction.reply({ content: '❌ Contexte invalide.', ephemeral: true });
+                }
+
+                const member = await guild.members.fetch(interaction.user.id);
+                const role = guild.roles.cache.get(roleId) || await guild.roles.fetch(roleId).catch(() => null);
+                if (!role) {
+                    return interaction.reply({ content: '❌ Rôle introuvable (supprimé ?).', ephemeral: true });
+                }
+
+                // Vérifs permissions & hiérarchie
+                const me = guild.members.me;
+                if (!me.permissions.has('ManageRoles')) {
+                    return interaction.reply({ content: '❌ Il me manque la permission **Gérer les rôles**.', ephemeral: true });
+                }
+                if (me.roles.highest.position <= role.position) {
+                    return interaction.reply({ content: '❌ Je ne peux pas gérer ce rôle (au-dessus de moi).', ephemeral: true });
+                }
+
+                const hasRole = member.roles.cache.has(role.id);
+                if (hasRole) {
+                    await member.roles.remove(role.id, 'RoleButton toggle: remove');
+                    return interaction.reply({ content: `➖ Rôle retiré : <@&${role.id}>`, ephemeral: true });
+                } else {
+                    await member.roles.add(role.id, 'RoleButton toggle: add');
+                    return interaction.reply({ content: `➕ Rôle ajouté : <@&${role.id}>`, ephemeral: true });
+                }
+            } catch (err) {
+                console.error('rolebutton toggle error:', err);
+                if (!interaction.replied && !interaction.deferred) {
+                    return interaction.reply({ content: '❌ Erreur pendant le toggle du rôle.', ephemeral: true });
+                }
+            }
+            return; // on stoppe ici si c’était un bouton
+        }
+
         // --- Slash commands classiques ---
         if (!interaction.isChatInputCommand()) return;
 
