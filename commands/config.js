@@ -67,8 +67,18 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('config')
     .setDescription('Configurer le serveur')
-    .addSubcommand(s => s.setName('ui').setDescription('Ouvre le panneau de configuration interactif'))
-    .addSubcommand(s => s.setName('show').setDescription('Afficher la configuration actuelle'))
+    .addSubcommand(s =>
+      s.setName('ui')
+        .setDescription('Ouvre le panneau de configuration interactif')
+    )
+    .addSubcommand(s =>
+      s.setName('show')
+        .setDescription('Afficher la configuration actuelle')
+    )
+    .addSubcommand(s =>
+      s.setName('setup')
+        .setDescription('Créer #logs privé si absent')
+    )
     .addSubcommand(s =>
       s.setName('liens')
         .setDescription('Ajouter / mettre à jour un lien (mode commande)')
@@ -105,8 +115,13 @@ module.exports = {
         .addStringOption(o => o.setName('role_id').setDescription('ID du rôle').setRequired(true))
     )
     .addSubcommand(s =>
-      s.setName('setup')
-        .setDescription('Créer #logs privé si absent')
+      s.setName('xp')
+        .setDescription('Activer ou désactiver le système d’XP')
+        .addBooleanOption(o =>
+          o.setName('enable')
+            .setDescription('Activer ? (true/false)')
+            .setRequired(true)
+        )
     ),
 
   async execute(interaction) {
@@ -135,11 +150,13 @@ module.exports = {
           { name: '🎙️ Voice', value: cfg.voice_channel ? `<#${cfg.voice_channel}>` : '—', inline: true },
           { name: '👤 Autorole', value: cfg.autorole ? `<@&${cfg.autorole}>` : '—', inline: true },
           { name: '🛡️ Rôles nommés', value: `Admin: **${cfg.admin_role || '—'}**\nMute: **${cfg.muted_role || '—'}**` },
-          { name: '📩 AutoMessage', value: cfg.auto_message_content
-              ? `Canal: <#${cfg.auto_message_channel}>\nIntervalle: ${Math.floor((cfg.auto_message_interval||0)/1000)}s\nActivé: ${cfg.auto_message_enabled ? '✅' : '❌'}\nContenu: ${String(cfg.auto_message_content).slice(0,256)}${String(cfg.auto_message_content).length>256?'…':''}`
+          {
+            name: '📩 AutoMessage', value: cfg.auto_message_content
+              ? `Canal: <#${cfg.auto_message_channel}>\nIntervalle: ${Math.floor((cfg.auto_message_interval || 0) / 1000)}s\nActivé: ${cfg.auto_message_enabled ? '✅' : '❌'}\nContenu: ${String(cfg.auto_message_content).slice(0, 256)}${String(cfg.auto_message_content).length > 256 ? '…' : ''}`
               : '—'
           },
           { name: '🔗 Liens', value: links.length ? links.map(l => `• **${l.name}** : ${l.url}`).join('\n') : '—' },
+          { name: '🧮 XP', value: cfg.xp_enabled ? '✅ Activé' : '❌ Désactivé', inline: true },
         )
         .setTimestamp();
       return interaction.reply({ embeds: [e], ephemeral: true });
@@ -180,7 +197,7 @@ module.exports = {
           .setTitle(res.updated ? '🔗 Lien mis à jour' : '🔗 Lien ajouté')
           .addFields({ name: 'Nom', value: name }, { name: 'URL', value: url })
           .setTimestamp();
-        log.send({ embeds: [emb] }).catch(() => {});
+        log.send({ embeds: [emb] }).catch(() => { });
       }
 
       return interaction.reply({ content: `✅ Lien **${name}** ${res.updated ? 'mis à jour' : 'ajouté'}.`, ephemeral: true });
@@ -219,20 +236,20 @@ module.exports = {
             { name: 'Message', value: content.slice(0, 1024) }
           )
           .setTimestamp();
-        log.send({ embeds: [emb] }).catch(() => {});
+        log.send({ embeds: [emb] }).catch(() => { });
       }
 
-      return interaction.reply({ content: `✅ AutoMessage ${ (enableOpt === undefined || enableOpt) ? 'activé' : 'configuré (désactivé)' } dans <#${channel.id}>.`, ephemeral: true });
+      return interaction.reply({ content: `✅ AutoMessage ${(enableOpt === undefined || enableOpt) ? 'activé' : 'configuré (désactivé)'} dans <#${channel.id}>.`, ephemeral: true });
     }
 
     // ------------- /config roles (mode commande) -------------
     if (sub === 'roles') {
       const adminName = interaction.options.getString('admin_role')?.trim();
-      const muteName  = interaction.options.getString('mute_role')?.trim();
+      const muteName = interaction.options.getString('mute_role')?.trim();
 
       const toSet = {};
       if (adminName) toSet.admin_role = adminName;
-      if (muteName)  toSet.muted_role = muteName;
+      if (muteName) toSet.muted_role = muteName;
       if (!Object.keys(toSet).length) {
         return interaction.reply({ content: '⚠️ Rien à modifier.', ephemeral: true });
       }
@@ -248,7 +265,7 @@ module.exports = {
             { name: 'Mute', value: muteName || '—', inline: true },
           )
           .setTimestamp();
-        log.send({ embeds: [emb] }).catch(() => {});
+        log.send({ embeds: [emb] }).catch(() => { });
       }
       return interaction.reply({ content: '✅ Rôles mis à jour.', ephemeral: true });
     }
@@ -264,7 +281,7 @@ module.exports = {
       if (log) {
         const emb = new EmbedBuilder().setColor(0xf08f19).setTitle('🎙️ Salon vocal configuré')
           .addFields({ name: 'Salon', value: `<#${chId}>` }).setTimestamp();
-        log.send({ embeds: [emb] }).catch(() => {});
+        log.send({ embeds: [emb] }).catch(() => { });
       }
       return interaction.reply({ content: `✅ Salon vocal défini : <#${chId}>`, ephemeral: true });
     }
@@ -280,7 +297,7 @@ module.exports = {
       if (log) {
         const emb = new EmbedBuilder().setColor(0xf08f19).setTitle("📢 Salon d'annonces mis à jour")
           .addFields({ name: 'Salon', value: `<#${chId}>` }).setTimestamp();
-        log.send({ embeds: [emb] }).catch(() => {});
+        log.send({ embeds: [emb] }).catch(() => { });
       }
       return interaction.reply({ content: `✅ Salon d'annonces défini : <#${chId}>`, ephemeral: true });
     }
@@ -294,9 +311,34 @@ module.exports = {
       if (log) {
         const emb = new EmbedBuilder().setColor(0x00ff88).setTitle('👤 Autorole configuré')
           .addFields({ name: 'Rôle', value: `<@&${roleId}>` }).setTimestamp();
-        log.send({ embeds: [emb] }).catch(() => {});
+        log.send({ embeds: [emb] }).catch(() => { });
       }
       return interaction.reply({ content: `✅ Rôle automatique défini : <@&${roleId}>`, ephemeral: true });
+    }
+
+    // ------------- /config xp (mode commande) -------------
+    if (sub === 'xp') {
+      const enable = interaction.options.getBoolean('enable', true);
+      await setServerFields(guildId, { xp_enabled: enable ? 1 : 0 });
+
+      // log optionnel
+      const log = guild.channels.cache.find(c => c.name?.toLowerCase() === 'logs');
+      if (log) {
+        const emb = new EmbedBuilder()
+          .setColor(enable ? 0x00ff88 : 0xff5555)
+          .setTitle('🧮 XP — état modifié')
+          .addFields({ name: 'Activé ?', value: enable ? '✅ Oui' : '❌ Non' })
+          .setTimestamp();
+        log.send({ embeds: [emb] }).catch(() => { });
+      }
+
+      // notifier le bot si tu veux faire réagir un cache interne
+      interaction.client.emit('configUpdate', guildId);
+
+      return interaction.reply({
+        content: `✅ Système d’XP **${enable ? 'activé' : 'désactivé'}**.`,
+        ephemeral: true,
+      });
     }
 
     // ------------- /config ui (dashboard interactif, tout-en-un) -------------
@@ -329,7 +371,8 @@ module.exports = {
       );
       const rowC = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId(`cfg_roles:${guildId}`).setStyle(ButtonStyle.Secondary).setLabel('🛡️ Rôles nommés'),
-        new ButtonBuilder().setCustomId(`cfg_setup_logs:${guildId}`).setStyle(ButtonStyle.Secondary).setLabel('🧰 Setup #logs')
+        new ButtonBuilder().setCustomId(`cfg_setup_logs:${guildId}`).setStyle(ButtonStyle.Secondary).setLabel('🧰 Setup #logs'),
+        new ButtonBuilder().setCustomId(`cfg_xp:${guildId}`).setStyle(ButtonStyle.Secondary).setLabel('🧮 XP ON/OFF')
       );
 
       const reply = await interaction.reply({ embeds: [embed], components: [rowA, rowB, rowC], ephemeral: true });
@@ -355,7 +398,7 @@ module.exports = {
 
             const submitted = await i.awaitModalSubmit({ time: 90_000, filter: m => m.customId === `modal_links:${guildId}` && m.user.id === interaction.user.id });
             const name = submitted.fields.getTextInputValue('link_name')?.trim();
-            const url  = submitted.fields.getTextInputValue('link_url')?.trim();
+            const url = submitted.fields.getTextInputValue('link_url')?.trim();
             if (!/^https?:\/\/.+\..+/i.test(url)) {
               return submitted.reply({ content: '❌ URL invalide (http/https).', ephemeral: true });
             }
@@ -368,7 +411,7 @@ module.exports = {
                 .setTitle(res.updated ? '🔗 Lien mis à jour' : '🔗 Lien ajouté')
                 .addFields({ name: 'Nom', value: name }, { name: 'URL', value: url })
                 .setTimestamp();
-              log.send({ embeds: [emb] }).catch(() => {});
+              log.send({ embeds: [emb] }).catch(() => { });
             }
             return submitted.reply({ content: `✅ Lien **${name}** ${res.updated ? 'mis à jour' : 'ajouté'}.`, ephemeral: true });
           }
@@ -434,13 +477,13 @@ module.exports = {
                     { name: 'Message', value: message.slice(0, 1024) },
                   )
                   .setTimestamp();
-                log.send({ embeds: [emb] }).catch(() => {});
+                log.send({ embeds: [emb] }).catch(() => { });
               }
               await sel.update({ content: `✅ AutoMessage ${enabled ? 'activé' : 'désactivé'} dans <#${channelId}> toutes les ${intervalSec}s.`, components: [] });
             });
 
             chCollector.on('end', async c => {
-              if (c.size === 0) { try { await submitted.editReply({ content: '⏳ Sélection expirée.', components: [] }); } catch {} }
+              if (c.size === 0) { try { await submitted.editReply({ content: '⏳ Sélection expirée.', components: [] }); } catch { } }
             });
             return;
           }
@@ -470,12 +513,12 @@ module.exports = {
               if (log) {
                 const emb = new EmbedBuilder().setColor(0xf08f19).setTitle("📢 Salon d'annonces mis à jour")
                   .addFields({ name: 'Salon', value: `<#${channelId}>` }).setTimestamp();
-                log.send({ embeds: [emb] }).catch(() => {});
+                log.send({ embeds: [emb] }).catch(() => { });
               }
               await sel.update({ content: `✅ Salon d'annonces : <#${channelId}>`, components: [] });
             });
 
-            coll.on('end', async c => { if (c.size === 0) { try { await i.editReply({ content: '⏳ Sélection expirée.', components: [] }); } catch {} } });
+            coll.on('end', async c => { if (c.size === 0) { try { await i.editReply({ content: '⏳ Sélection expirée.', components: [] }); } catch { } } });
             return;
           }
 
@@ -504,12 +547,12 @@ module.exports = {
               if (log) {
                 const emb = new EmbedBuilder().setColor(0xf08f19).setTitle('🎙️ Salon vocal configuré')
                   .addFields({ name: 'Salon', value: `<#${chId}>` }).setTimestamp();
-                log.send({ embeds: [emb] }).catch(() => {});
+                log.send({ embeds: [emb] }).catch(() => { });
               }
               await sel.update({ content: `✅ Salon vocal défini : <#${chId}>`, components: [] });
             });
 
-            coll.on('end', async c => { if (c.size === 0) { try { await i.editReply({ content: '⏳ Sélection expirée.', components: [] }); } catch {} } });
+            coll.on('end', async c => { if (c.size === 0) { try { await i.editReply({ content: '⏳ Sélection expirée.', components: [] }); } catch { } } });
             return;
           }
 
@@ -535,12 +578,12 @@ module.exports = {
               if (log) {
                 const emb = new EmbedBuilder().setColor(0x00ff88).setTitle('👤 Autorole configuré')
                   .addFields({ name: 'Rôle', value: `<@&${roleId}>` }).setTimestamp();
-                log.send({ embeds: [emb] }).catch(() => {});
+                log.send({ embeds: [emb] }).catch(() => { });
               }
               await sel.update({ content: `✅ Rôle automatique : <@&${roleId}>`, components: [] });
             });
 
-            coll.on('end', async c => { if (c.size === 0) { try { await i.editReply({ content: '⏳ Sélection expirée.', components: [] }); } catch {} } });
+            coll.on('end', async c => { if (c.size === 0) { try { await i.editReply({ content: '⏳ Sélection expirée.', components: [] }); } catch { } } });
             return;
           }
 
@@ -548,17 +591,17 @@ module.exports = {
           if (id === 'cfg_roles') {
             const modal = new ModalBuilder().setCustomId(`modal_roles:${guildId}`).setTitle('Rôles nommés');
             const adminInput = new TextInputBuilder().setCustomId('admin_role').setLabel("Nom du rôle Admin").setStyle(TextInputStyle.Short).setRequired(false).setPlaceholder('Admin');
-            const muteInput  = new TextInputBuilder().setCustomId('mute_role_name').setLabel("Nom du rôle Mute").setStyle(TextInputStyle.Short).setRequired(false).setPlaceholder('Muted');
+            const muteInput = new TextInputBuilder().setCustomId('mute_role_name').setLabel("Nom du rôle Mute").setStyle(TextInputStyle.Short).setRequired(false).setPlaceholder('Muted');
             modal.addComponents(new ActionRowBuilder().addComponents(adminInput), new ActionRowBuilder().addComponents(muteInput));
             await i.showModal(modal);
 
             const submitted = await i.awaitModalSubmit({ time: 90_000, filter: m => m.customId === `modal_roles:${guildId}` && m.user.id === interaction.user.id });
             const adminRoleName = submitted.fields.getTextInputValue('admin_role')?.trim();
-            const muteRoleName  = submitted.fields.getTextInputValue('mute_role_name')?.trim();
+            const muteRoleName = submitted.fields.getTextInputValue('mute_role_name')?.trim();
 
             const toSet = {};
             if (adminRoleName) toSet.admin_role = adminRoleName;
-            if (muteRoleName)  toSet.muted_role = muteRoleName;
+            if (muteRoleName) toSet.muted_role = muteRoleName;
             if (Object.keys(toSet).length) await setServerFields(guildId, toSet);
 
             const log = guild.channels.cache.find(c => c.name.toLowerCase() === 'logs');
@@ -566,9 +609,9 @@ module.exports = {
               const emb = new EmbedBuilder().setColor(0xf08f19).setTitle('🛡️ Rôles nommés mis à jour')
                 .addFields(
                   { name: 'Admin', value: adminRoleName || '—', inline: true },
-                  { name: 'Mute',  value: muteRoleName  || '—', inline: true },
+                  { name: 'Mute', value: muteRoleName || '—', inline: true },
                 ).setTimestamp();
-              log.send({ embeds: [emb] }).catch(() => {});
+              log.send({ embeds: [emb] }).catch(() => { });
             }
             return submitted.reply({ content: '✅ Rôles mis à jour.', ephemeral: true });
           }
@@ -591,6 +634,36 @@ module.exports = {
             return i.reply({ content: '✅ #logs créé.', ephemeral: true });
           }
 
+          // --- XP: toggle on/off ---
+          if (id === 'cfg_xp') {
+            // lire l'état actuel
+            const cfg = await getServerConfig(guildId);
+            const current = !!cfg.xp_enabled;             // si colonne absente => falsey
+            const next = current ? 0 : 1;
+
+            await setServerFields(guildId, { xp_enabled: next });
+
+            // log vers #logs
+            const log = guild.channels.cache.find(c => c.name?.toLowerCase() === 'logs');
+            if (log) {
+              const emb = new EmbedBuilder()
+                .setColor(next ? 0x00ff88 : 0xff5555)
+                .setTitle('🧮 XP — état modifié (UI)')
+                .addFields(
+                  { name: 'Activé ?', value: next ? '✅ Oui' : '❌ Non', inline: true },
+                  { name: 'Par', value: i.user.tag, inline: true },
+                )
+                .setTimestamp();
+              log.send({ embeds: [emb] }).catch(() => { });
+            }
+
+            // notifier le bot (vide le cache XP côté event/messagecreate)
+            interaction.client.emit('configUpdate', guildId);
+
+            // feedback utilisateur
+            return i.reply({ content: `✅ Système d’XP **${next ? 'activé' : 'désactivé'}**.`, ephemeral: true });
+          }
+
           // --- Show (depuis UI) ---
           if (id === 'cfg_show') {
             const cfg = await getServerConfig(guildId);
@@ -601,13 +674,15 @@ module.exports = {
               .addFields(
                 { name: '🔗 Liens', value: links.length ? links.map(l => `• **${l.name}** : ${l.url}`).join('\n') : '—' },
                 { name: '🛡️ Rôles nommés', value: `Admin: **${cfg.admin_role || '—'}**\nMute: **${cfg.muted_role || '—'}**` },
-                { name: '📩 AutoMessage', value: cfg.auto_message_content
-                    ? `Canal: <#${cfg.auto_message_channel}>\nIntervalle: ${Math.floor((cfg.auto_message_interval||0)/1000)}s\nActivé: ${cfg.auto_message_enabled ? '✅' : '❌'}\nMessage: ${String(cfg.auto_message_content).slice(0,256)}${String(cfg.auto_message_content).length>256?'…':''}`
+                {
+                  name: '📩 AutoMessage', value: cfg.auto_message_content
+                    ? `Canal: <#${cfg.auto_message_channel}>\nIntervalle: ${Math.floor((cfg.auto_message_interval || 0) / 1000)}s\nActivé: ${cfg.auto_message_enabled ? '✅' : '❌'}\nMessage: ${String(cfg.auto_message_content).slice(0, 256)}${String(cfg.auto_message_content).length > 256 ? '…' : ''}`
                     : '—'
                 },
                 { name: '🎙️ Voice', value: cfg.voice_channel ? `<#${cfg.voice_channel}>` : '—' },
                 { name: '📢 Annonces', value: cfg.annonce_channel ? `<#${cfg.annonce_channel}>` : '—' },
                 { name: '👤 Autorole', value: cfg.autorole ? `<@&${cfg.autorole}>` : '—' },
+                { name: '🧮 XP', value: cfg.xp_enabled ? '✅ Activé' : '❌ Désactivé', inline: true },
               )
               .setTimestamp();
             return i.reply({ embeds: [e], ephemeral: true });
@@ -615,12 +690,12 @@ module.exports = {
 
         } catch (err) {
           console.error('Config UI error:', err);
-          if (!i.replied && !i.deferred) i.reply({ content: '❌ Une erreur est survenue.', ephemeral: true }).catch(() => {});
+          if (!i.replied && !i.deferred) i.reply({ content: '❌ Une erreur est survenue.', ephemeral: true }).catch(() => { });
         }
       });
 
       collector.on('end', async () => {
-        try { await interaction.editReply({ components: [] }); } catch {}
+        try { await interaction.editReply({ components: [] }); } catch { }
       });
 
       return;
