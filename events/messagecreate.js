@@ -1,6 +1,32 @@
 // DB
 const db = require('../data/db');
 
+// -------- Mini-cache pour xp_enabled (guildId -> { enabled: boolean, ts: number }) --------
+const xpCache = new Map();
+const XP_CACHE_TTL_MS = 60_000; // 60s
+
+async function isXpEnabled(guildId) {
+  const cached = xpCache.get(guildId);
+  const now = Date.now();
+
+  if (cached && (now - cached.ts) < XP_CACHE_TTL_MS) {
+    return cached.enabled;
+  }
+
+  // Lecture DB
+  const [rows] = await db.query(
+    'SELECT xp_enabled FROM serverconfig WHERE server_id = ? LIMIT 1',
+    [guildId]
+  );
+  const enabled = rows?.length ? !!rows[0].xp_enabled : true; // défaut: activé
+  xpCache.set(guildId, { enabled, ts: now });
+  return enabled;
+}
+
+function clearXpCache(guildId) {
+  if (guildId) xpCache.delete(guildId);
+}
+
 // -------- Helpers DB (db-based) --------
 async function loadUserData(guildId, userId) {
   const [rows] = await db.query(
@@ -22,12 +48,12 @@ async function loadUserData(guildId, userId) {
 }
 
 async function saveUserData(guildId, userId, xp, level, levelId = null) {
-  // On encapsule dans une transaction pour garder (levels + liaison) cohérents
+  // Transaction pour conserver (levels + liaison) cohérents
   const conn = await db.getConnection();
   try {
     await conn.beginTransaction();
 
-    // 1) Récupérer (ou vérifier) le serverconfig.id
+    // 1) Récupérer serverconfig.id
     const [serverRows] = await conn.query(
       'SELECT id FROM serverconfig WHERE server_id = ? LIMIT 1',
       [guildId]
@@ -37,7 +63,7 @@ async function saveUserData(guildId, userId, xp, level, levelId = null) {
     }
     const serverConfigId = serverRows[0].id;
 
-    // 2) Si on a déjà un levelId, on met à jour; sinon on insère + lie
+    // 2) Update ou insert + liaison
     if (levelId) {
       await conn.query('UPDATE levels SET xp = ?, level = ? WHERE id = ?', [
         xp,
@@ -87,7 +113,7 @@ async function addXP(message, xpGained) {
     // petite annonce niveau (non bloquante)
     message.channel
       .send(`🎉 **${message.author.username}** passe au **niveau ${newLevel}** ! Félicitations !`)
-      .catch(() => {});
+      .catch(() => { });
   }
 
   await saveUserData(guildId, userId, newXP, newLevel, data.levelId);
@@ -97,14 +123,17 @@ async function addXP(message, xpGained) {
 module.exports = {
   name: 'messageCreate',
   once: false,
-  async execute(message) {
+  async execute(message, client) {
     try {
-      // Ignore les bots et les DM
+      // Ignore bots / DM / messages trop courts
       if (message.author.bot || !message.guild) return;
-
-      // (Optionnel) Anti-spam ultra simple : ignore si message < 2 caractères
       if ((message.content || '').trim().length < 2) return;
 
+      // ⛔️ Respecter le flag xp_enabled
+      const enabled = await isXpEnabled(message.guild.id);
+      if (!enabled) return;
+
+      // Ajout d'XP
       const XP_PER_MESSAGE = 10;
       await addXP(message, XP_PER_MESSAGE);
     } catch (error) {
@@ -112,3 +141,6 @@ module.exports = {
     }
   },
 };
+
+// (Optionnel) exporter l’utilitaire si besoin ailleurs
+module.exports.clearXpCache = clearXpCache;

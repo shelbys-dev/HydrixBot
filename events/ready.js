@@ -1,5 +1,6 @@
 const { ActivityType } = require('discord.js');
 const { serverConfigs } = require('../data/serverconfigs.js');
+const { clearXpCache } = require('./messagecreate.js');
 
 // DB
 const db = require('../data/db');
@@ -96,6 +97,7 @@ module.exports = {
         client.on('configUpdate', (guildId) => {
             console.log(`🔄 Mise à jour de la configuration pour ${guildId}.`);
             syncAutoMessages(guildId);
+            clearXpCache(guildId);
         });
 
         // Nettoyer les intervalles si un serveur est supprimé
