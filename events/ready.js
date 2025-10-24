@@ -6,7 +6,7 @@ const { clearXpCache } = require('./messagecreate.js');
 const db = require('../data/db');
 
 module.exports = {
-    name: 'ready', // Nom de l'événement
+    name: 'clientReady', // Nom de l'événement
     once: false, // true si l'événement ne se déclenche qu'une fois
     async execute(client) {
         console.log(`✅ Bot connecté en tant que ${client.user.tag}`);
