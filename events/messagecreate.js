@@ -142,5 +142,4 @@ module.exports = {
   },
 };
 
-// (Optionnel) exporter l’utilitaire si besoin ailleurs
 module.exports.clearXpCache = clearXpCache;
