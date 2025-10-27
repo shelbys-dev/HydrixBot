@@ -30,7 +30,7 @@ module.exports = {
         // Liste des statuts à alterner
         const statuses = [
             { name: `${totalMembers} membres 🤖`, type: ActivityType.Watching },
-            { name: '/help', type: ActivityType.Custom },
+            { name: '/help pour commencer', type: ActivityType.Custom },
             { name: 'son créateur, Shelby S.', type: ActivityType.Listening },
             { name: 'Site en développement..', type: ActivityType.Custom },
         ];
