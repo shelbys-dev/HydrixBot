@@ -29,10 +29,10 @@ module.exports = {
 
         // Liste des statuts à alterner
         const statuses = [
-            { name: 'des chats mignons 🐱', type: ActivityType.Watching },
-            { name: 'son créateur, Shelby S.', type: ActivityType.Listening },
-            { name: '/help !', type: ActivityType.Playing },
             { name: `${totalMembers} membres 🤖`, type: ActivityType.Watching },
+            { name: '/help', type: ActivityType.Custom },
+            { name: 'son créateur, Shelby S.', type: ActivityType.Listening },
+            { name: 'Site en développement..', type: ActivityType.Custom },
         ];
 
         let i = 0;
