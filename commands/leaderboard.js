@@ -82,6 +82,7 @@ function buildRow({ page, pages, guildId }) {
 }
 
 module.exports = {
+    category: 'XP',
     data: new SlashCommandBuilder()
         .setName('leaderboard')
         .setDescription('Affiche le classement des joueurs par niveau sur ce serveur')

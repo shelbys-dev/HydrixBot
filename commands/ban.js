@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, PermissionFlagsBits, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, EmbedBuilder } = require('discord.js');
 
 module.exports = {
+    category: 'Modération',
     data: new SlashCommandBuilder()
         .setName('ban')
         .setDescription('Bannir un membre (ouvre une modal pour ajouter un motif optionnel).')

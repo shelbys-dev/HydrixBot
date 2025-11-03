@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
 
 module.exports = {
+    category: 'Utilitaires',
     data: new SlashCommandBuilder()
         .setName('important')
         .setDescription('Composer et publier une annonce dans #annonces via un formulaire'),

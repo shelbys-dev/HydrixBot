@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 
 module.exports = {
+    category: 'Modération',
     data: new SlashCommandBuilder()
         .setName('clear')
         .setDescription('Supprime les messages d’un utilisateur dans le salon')

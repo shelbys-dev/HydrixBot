@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, PermissionsBitField, EmbedBuilder } = require('discord.js');
 
 module.exports = {
+    category: 'Utilitaires',
     data: new SlashCommandBuilder()
         .setName('ping')
         .setDescription('Répond avec Pong ! 🏓'),

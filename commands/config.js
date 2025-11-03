@@ -64,6 +64,7 @@ async function listLinks(guildId) {
 
 // ---------- Commande ----------
 module.exports = {
+  category: 'Configuration',
   data: new SlashCommandBuilder()
     .setName('config')
     .setDescription('Configurer le serveur')

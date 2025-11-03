@@ -16,6 +16,7 @@ async function intoDataURI(src) {
 }
 
 module.exports = {
+    category: 'Administration',
     data: new SlashCommandBuilder()
         .setName("setbotprofile")
         .setDescription("Définir le profil du bot pour CE serveur (nick, bio, avatar, bannière).")

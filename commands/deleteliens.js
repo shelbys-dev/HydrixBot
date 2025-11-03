@@ -12,6 +12,7 @@ const dbConfig = {
 };
 
 module.exports = {
+    category: 'Configuration',
     data: new SlashCommandBuilder()
         .setName('delete-lien') // Nom de la commande
         .setDescription("Supprime un lien de la liste configurée pour ce serveur") // Description

@@ -2,6 +2,7 @@ const { SlashCommandBuilder } = require('discord.js');
 const { serverConfigs, saveConfigs } = require('../data/serverconfigs.js');
 
 module.exports = {
+    category: 'Configuration',
     data: new SlashCommandBuilder()
         .setName('removeautomessage')
         .setDescription('Supprime la configuration des messages automatiques pour ce serveur.'),

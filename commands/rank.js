@@ -17,6 +17,7 @@ function progressBar(current, total, size = 20) {
 }
 
 module.exports = {
+    category: 'XP',
     data: new SlashCommandBuilder()
         .setName('rank')
         .setDescription('Affiche ton niveau et ta progression XP sur ce serveur')

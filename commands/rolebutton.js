@@ -36,6 +36,7 @@ function toBtnStyle(styleStr) {
 }
 
 module.exports = {
+    category: 'Administration',
     data: new SlashCommandBuilder()
         .setName('rolebutton')
         .setDescription('Configurer et publier un panel de rôles à boutons')

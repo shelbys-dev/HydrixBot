@@ -18,6 +18,7 @@ function isDev(userId) {
 }
 
 module.exports = {
+    category: 'Administration',
     data: new SlashCommandBuilder()
         .setName('xp')
         .setDescription('Administration XP')

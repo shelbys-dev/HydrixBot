@@ -12,6 +12,7 @@ const dbConfig = {
 };
 
 module.exports = {
+    category: 'Utilitaires',
     data: new SlashCommandBuilder()
         .setName('liens') // Nom de la commande
         .setDescription('Affiche la liste des liens utiles ou configurés par les administrateurs'), // Description de la commande

@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 
 module.exports = {
+    category: 'Fun',
     data: new SlashCommandBuilder()
         .setName('chats') // Nom de la commande
         .setDescription('Obtiens une image aléatoire de chat 🐱'), // Description

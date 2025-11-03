@@ -11,6 +11,7 @@ const {
 const db = require('../data/db');
 
 module.exports = {
+    category: 'Tickets',
     data: new SlashCommandBuilder()
         .setName('ticket')
         .setDescription('Système de support par tickets')

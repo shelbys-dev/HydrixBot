@@ -11,6 +11,7 @@ const {
 } = require('discord.js');
 
 module.exports = {
+    category: 'Administration',
     data: new SlashCommandBuilder()
         .setName('purge')
         .setDescription('Supprime l’intégralité des messages d’un salon (avec confirmation).')
