@@ -1,28 +1,79 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+// commands/help.js
+const {
+    SlashCommandBuilder,
+    EmbedBuilder,
+    ActionRowBuilder,
+    StringSelectMenuBuilder,
+} = require('discord.js');
+
+const ORDER = [
+    'Modération',
+    'Configuration',
+    'Administration',
+    'XP',
+    'Utilitaires',
+    'Fun',
+    'Logs',
+    'Tickets',
+    'Autres',
+];
 
 module.exports = {
+    category: 'Utilitaires',
     data: new SlashCommandBuilder()
         .setName('help')
-        .setDescription('Affiche la liste des commandes disponibles.'),
-    async execute(interaction) {
-        const commands = interaction.client.commands.map(cmd => `**/${cmd.data.name}** - ${cmd.data.description}`);
+        .setDescription('Affiche l’aide interactive, triée par catégories.'),
 
-        // Créer un embed dynamique avec les liens
-        const embed = new EmbedBuilder()
-            .setColor('#1c5863') // Couleur de l'embed
-            .setTitle('Commandes') // Titre
-            .setDescription('📖 Voici la liste des commandes disponibles :') // Description
-            .addFields(
-                { name: 'Commandes', value: commands.join('\n') }
+    async execute(interaction) {
+        const all = interaction.client.commands
+            .map(cmd => ({
+                name: cmd?.data?.name,
+                desc: cmd?.data?.description || '—',
+                cat: cmd?.category || cmd?.data?.category || 'Autres',
+            }))
+            .filter(c => !!c.name);
+
+        const byCat = new Map();
+        for (const c of all) {
+            if (!byCat.has(c.cat)) byCat.set(c.cat, []);
+            byCat.get(c.cat).push(c);
+        }
+
+        const categories = [
+            ...ORDER.filter(c => byCat.has(c)),
+            ...[...byCat.keys()].filter(c => !ORDER.includes(c)),
+        ];
+
+        // Sommaire
+        const index = new EmbedBuilder()
+            .setColor('#1c5863')
+            .setTitle('📖 Aide — Sommaire')
+            .setDescription(
+                categories.map(cat => `• **${cat}** (${byCat.get(cat).length})`).join('\n')
+                || 'Aucune commande disponible.',
             )
-            .setThumbnail(interaction.client.user.displayAvatarURL({ dynamic: true, size: 1024 })) // Icône du bot
-            .setFooter({ text: 'Bot codé par Shelby S. ! 🚀' })
+            .setThumbnail(interaction.client.user.displayAvatarURL({ dynamic: true, size: 1024 }))
+            .setFooter({ text: 'HydrixBot — /help' })
             .setTimestamp();
 
-        // Répondre à l'utilisateur avec l'embed
+        // Menu de catégories (max 25 options)
+        const options = categories.slice(0, 25).map(cat => ({
+            label: cat,
+            value: encodeURIComponent(cat),
+            description: `${byCat.get(cat).length} commande(s)`,
+        }));
+
+        const select = new StringSelectMenuBuilder()
+            .setCustomId(`help:select|${interaction.user.id}`)
+            .setPlaceholder('Choisis une catégorie…')
+            .addOptions(options);
+
+        const row = new ActionRowBuilder().addComponents(select);
+
         await interaction.reply({
-            embeds: [embed],
-            ephemeral: true, // Visible uniquement par l'utilisateur
+            embeds: [index],
+            components: [row],
+            ephemeral: true,
         });
     },
 };

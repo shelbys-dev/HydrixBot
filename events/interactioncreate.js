@@ -23,6 +23,64 @@ function splitForDiscord(text, max = MAX_EMBED) {
     return chunks;
 }
 
+// === HELP INTERACTIVE HELPERS ===
+const MAX_DESC = 4096; // limite description d’un embed
+
+function buildCategoryPages(client, category) {
+    // Regénère la liste à chaque interaction pour rester à jour
+    const entries = client.commands
+        .map(cmd => ({
+            name: cmd?.data?.name,
+            desc: cmd?.data?.description || '—',
+            cat: cmd?.category || cmd?.data?.category || 'Autres',
+        }))
+        .filter(c => !!c.name && c.cat === category)
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map(c => `**/${c.name}** — ${c.desc}`);
+
+    const header = `### ${category}\n`;
+    const pages = [];
+    let current = header;
+
+    for (const line of entries) {
+        const add = (current ? '\n' : '') + line;
+        if (current.length + add.length > MAX_DESC) {
+            pages.push(current);
+            current = header + line; // réinjecter le header à chaque page
+        } else {
+            current += (current ? '\n' : '') + line;
+        }
+    }
+    if (current) pages.push(current);
+
+    if (pages.length === 0) pages.push(`### ${category}\nAucune commande.`);
+
+    return pages.map((text, idx) =>
+        new EmbedBuilder()
+            .setColor('#1c5863')
+            .setTitle(pages.length > 1 ? `${category} — page ${idx + 1}/${pages.length}` : category)
+            .setDescription(text)
+            .setTimestamp()
+    );
+}
+
+function pageRow(userId, category, page, total) {
+    const encCat = encodeURIComponent(category);
+    const prev = new ButtonBuilder()
+        .setCustomId(`help:page|${userId}|${encCat}|${page - 1}`)
+        .setStyle(ButtonStyle.Secondary)
+        .setLabel('◀ Précédent')
+        .setDisabled(page <= 1);
+
+    const next = new ButtonBuilder()
+        .setCustomId(`help:page|${userId}|${encCat}|${page + 1}`)
+        .setStyle(ButtonStyle.Secondary)
+        .setLabel('Suivant ▶')
+        .setDisabled(page >= total);
+
+    return new ActionRowBuilder().addComponents(prev, next);
+}
+
 function formatLabel(t) {
     const id = `#${t.id}`;
     const who = t.opener_tag || t.opener_user_id;
@@ -141,6 +199,43 @@ module.exports = {
     once: false,
 
     async execute(interaction) {
+        // Sélecteur de catégorie
+        if (interaction.isStringSelectMenu() && interaction.customId.startsWith('help:select|')) {
+            const [, userId] = interaction.customId.split('|');
+            if (interaction.user.id !== userId) {
+                return interaction.reply({ content: '❌ Cette sélection ne t’est pas destinée.', ephemeral: true });
+            }
+
+            const category = decodeURIComponent(interaction.values[0]);
+            const pages = buildCategoryPages(interaction.client, category);
+            const page = 1;
+
+            const components = pages.length > 1 ? [pageRow(userId, category, page, pages.length)] : [];
+            return interaction.update({
+                embeds: [pages[page - 1]],
+                components,
+            });
+        }
+
+        // Pagination (boutons)
+        if (interaction.isButton() && interaction.customId.startsWith('help:page|')) {
+            const [, userId, encCat, pageStr] = interaction.customId.split('|');
+            if (interaction.user.id !== userId) {
+                return interaction.reply({ content: '❌ Ces boutons ne te sont pas destinés.', ephemeral: true });
+            }
+
+            const category = decodeURIComponent(encCat);
+            const pages = buildCategoryPages(interaction.client, category);
+            let page = parseInt(pageStr, 10) || 1;
+            page = Math.min(Math.max(1, page), pages.length);
+
+            const components = pages.length > 1 ? [pageRow(userId, category, page, pages.length)] : [];
+            return interaction.update({
+                embeds: [pages[page - 1]],
+                components,
+            });
+        }
+
         // --- Gestion du Modal /important ---
         if (interaction.isModalSubmit() && interaction.customId === 'importantModal') {
             await interaction.deferReply({ ephemeral: true });
