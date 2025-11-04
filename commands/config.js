@@ -13,6 +13,7 @@ const {
   ChannelSelectMenuBuilder,
   RoleSelectMenuBuilder,
   ComponentType,
+  ChannelType
 } = require('discord.js');
 
 // DB
@@ -111,6 +112,18 @@ module.exports = {
         .addStringOption(o => o.setName('channel').setDescription("ID du salon d'annonces"))
     )
     .addSubcommand(s =>
+      s.setName('boost')
+        .setDescription('Configurer le message de boost')
+        .addStringOption(o => o
+          .setName('channel')
+          .setDescription("ID du salon (laisser vide ou 'none' pour aucun)")
+          .setRequired(false))
+        .addBooleanOption(o => o
+          .setName('enable')
+          .setDescription('Activer la fonction ?')
+          .setRequired(false))
+    )
+    .addSubcommand(s =>
       s.setName('autorole')
         .setDescription('Définir le rôle automatique (ID)')
         .addStringOption(o => o.setName('role_id').setDescription('ID du rôle').setRequired(true))
@@ -147,6 +160,7 @@ module.exports = {
         .setColor(0x0099ff)
         .setTitle('Configuration actuelle')
         .addFields(
+          { name: '💎 Boost', value: `${cfg.boost_enabled ? '✅' : '❌'}  |  Salon: ${cfg.boost_channel ? `<#${cfg.boost_channel}>` : '—'}`, inline: true },
           { name: '📢 Annonces', value: cfg.annonce_channel ? `<#${cfg.annonce_channel}>` : '—', inline: true },
           { name: '🎙️ Voice', value: cfg.voice_channel ? `<#${cfg.voice_channel}>` : '—', inline: true },
           { name: '👤 Autorole', value: cfg.autorole ? `<@&${cfg.autorole}>` : '—', inline: true },
@@ -303,6 +317,46 @@ module.exports = {
       return interaction.reply({ content: `✅ Salon d'annonces défini : <#${chId}>`, ephemeral: true });
     }
 
+    // ------------- /config boost (mode commande) -------------
+    if (sub === 'boost') {
+      const chIdRaw = interaction.options.getString('channel')?.trim();
+      const enableOpt = interaction.options.getBoolean('enable'); // undefined = pas changé
+
+      const toSet = {};
+      if (chIdRaw === undefined) {
+        // pas de changement de salon si l’option n’est pas fournie
+      } else if (!chIdRaw || chIdRaw.toLowerCase() === 'none' || chIdRaw.toLowerCase() === 'aucun') {
+        toSet.boost_channel = null;        // "aucun salon"
+      } else {
+        toSet.boost_channel = chIdRaw;     // ID fourni tel quel
+      }
+      if (enableOpt !== undefined) toSet.boost_enabled = enableOpt ? 1 : 0;
+
+      if (!Object.keys(toSet).length) {
+        return interaction.reply({ content: '⚠️ Rien à modifier.', ephemeral: true });
+      }
+      await setServerFields(guildId, toSet);
+
+      // logs
+      const log = guild.channels.cache.find(c => c.name?.toLowerCase() === 'logs');
+      if (log) {
+        const emb = new EmbedBuilder()
+          .setColor(0xff73fa)
+          .setTitle('💎 Configuration Boost mise à jour')
+          .addFields(
+            { name: 'Salon', value: toSet.boost_channel === null ? '— (aucun)' : (toSet.boost_channel ? `<#${toSet.boost_channel}>` : '— (inchangé)'), inline: true },
+            { name: 'Activé', value: enableOpt === undefined ? '— (inchangé)' : (enableOpt ? '✅' : '❌'), inline: true },
+          )
+          .setTimestamp();
+        log.send({ embeds: [emb] }).catch(() => { });
+      }
+
+      return interaction.reply({
+        content: `✅ Boost: ${enableOpt === undefined ? 'état inchangé' : (enableOpt ? 'activé' : 'désactivé')}${toSet.boost_channel === null ? ' • salon effacé' : (toSet.boost_channel ? ` • salon: <#${toSet.boost_channel}>` : '')}.`,
+        ephemeral: true
+      });
+    }
+
     // ------------- /config autorole (mode commande) -------------
     if (sub === 'autorole') {
       const roleId = interaction.options.getString('role_id', true).trim();
@@ -375,8 +429,11 @@ module.exports = {
         new ButtonBuilder().setCustomId(`cfg_setup_logs:${guildId}`).setStyle(ButtonStyle.Secondary).setLabel('🧰 Setup #logs'),
         new ButtonBuilder().setCustomId(`cfg_xp:${guildId}`).setStyle(ButtonStyle.Secondary).setLabel('🧮 XP ON/OFF')
       );
+      const rowD = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`cfg_boost:${guildId}`).setStyle(ButtonStyle.Secondary).setLabel('💎 Boost'),
+      );
 
-      const reply = await interaction.reply({ embeds: [embed], components: [rowA, rowB, rowC], ephemeral: true });
+      const reply = await interaction.reply({ embeds: [embed], components: [rowA, rowB, rowC, rowD], ephemeral: true });
 
       const collector = reply.createMessageComponentCollector({
         componentType: ComponentType.Button,
@@ -520,6 +577,113 @@ module.exports = {
             });
 
             coll.on('end', async c => { if (c.size === 0) { try { await i.editReply({ content: '⏳ Sélection expirée.', components: [] }); } catch { } } });
+            return;
+          }
+
+          // --- BOOST : UI principale (comme ton cfg_xp mais avec panneau complet)
+          if (id === 'cfg_boost') {
+            const guild = interaction.guild; // même portée que ton cfg_xp
+            const rowSel = new ActionRowBuilder().addComponents(
+              new ChannelSelectMenuBuilder()
+                .setCustomId(`boost_channel:${guildId}:${Date.now()}`)
+                .setPlaceholder('Choisis le salon pour les messages de boost (optionnel)')
+                .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
+            );
+            const rowBtns = new ActionRowBuilder().addComponents(
+              new ButtonBuilder().setCustomId(`boost_toggle:${guildId}`).setStyle(ButtonStyle.Primary).setLabel('Activer/Désactiver'),
+              new ButtonBuilder().setCustomId(`boost_clear:${guildId}`).setStyle(ButtonStyle.Secondary).setLabel('Aucun salon')
+            );
+
+            await i.reply({ content: 'Configure le message de boost :', components: [rowSel, rowBtns], ephemeral: true });
+            const msg = await i.fetchReply();
+
+            const coll = msg.createMessageComponentCollector({
+              time: 120_000,
+              filter: x => x.user.id === interaction.user.id
+            });
+
+            // helper logs (même logique que ton cfg_xp)
+            async function logBoost({ channelId, enabled, actorTag }) {
+              try {
+                const log = guild.channels.cache.find(c => c.name?.toLowerCase() === 'logs');
+                if (!log) return;
+
+                const fields = [];
+                if (typeof enabled === 'number') fields.push({ name: 'Activé ?', value: enabled ? '✅ Oui' : '❌ Non', inline: true });
+                if (channelId !== undefined) fields.push({ name: 'Salon', value: channelId ? `<#${channelId}>` : '— (aucun)', inline: true });
+                if (actorTag) fields.push({ name: 'Par', value: actorTag, inline: true });
+
+                const emb = new EmbedBuilder()
+                  .setColor(0xff73fa)
+                  .setTitle('💎 Boost — configuration modifiée (UI)')
+                  .addFields(fields)
+                  .setTimestamp();
+
+                await log.send({ embeds: [emb] });
+              } catch { }
+            }
+
+            coll.on('collect', async (sel) => {
+              try {
+                // 1) Sélection d’un salon
+                if (sel.isChannelSelectMenu() && sel.customId.startsWith('boost_channel:')) {
+                  const chId = sel.values?.[0] || null;
+                  await setServerFields(guildId, { boost_channel: chId });
+
+                  // log à la XP (avant return)
+                  await logBoost({ channelId: chId, actorTag: sel.user.tag });
+
+                  return sel.update({
+                    content: `✅ Salon de boost: ${chId ? `<#${chId}>` : '— (aucun)'}`,
+                    components: [rowSel, rowBtns]
+                  });
+                }
+
+                // 2) Toggle ON/OFF (exactement comme ton cfg_xp)
+                if (sel.customId === `boost_toggle:${guildId}`) {
+                  const cfg = await getServerConfig(guildId);
+                  const current = !!cfg.boost_enabled;
+                  const next = current ? 0 : 1;
+
+                  await setServerFields(guildId, { boost_enabled: next });
+
+                  // log à la XP
+                  await logBoost({ enabled: next, actorTag: sel.user.tag });
+
+                  // notifier le bot si tu as un event interne (optionnel, comme pour XP)
+                  interaction.client.emit('configUpdate', guildId);
+
+                  return sel.update({
+                    content: `✅ Message de boost **${next ? 'activé' : 'désactivé'}**.`,
+                    components: [rowSel, rowBtns]
+                  });
+                }
+
+                // 3) Aucun salon (NULL en base)
+                if (sel.customId === `boost_clear:${guildId}`) {
+                  await setServerFields(guildId, { boost_channel: null });
+
+                  await logBoost({ channelId: null, actorTag: sel.user.tag });
+
+                  return sel.update({
+                    content: '✅ Salon de boost effacé (aucun salon).',
+                    components: [rowSel, rowBtns]
+                  });
+                }
+              } catch (e) {
+                console.error('cfg_boost error:', e);
+                if (!sel.replied && !sel.deferred) {
+                  sel.reply({ content: '❌ Erreur.', ephemeral: true }).catch(() => { });
+                }
+              }
+            });
+
+            coll.on('end', async c => {
+              if (c.size === 0) {
+                try { await i.editReply({ content: '⏳ Config boost expirée.', components: [] }); } catch { }
+              }
+            });
+
             return;
           }
 
