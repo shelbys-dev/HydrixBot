@@ -26,12 +26,13 @@ module.exports = {
         }
 
         const totalMembers = client.guilds.cache.reduce((acc, guild) => acc + guild.memberCount, 0);
+        const guilds = client.guilds.cache.size;
 
         // Liste des statuts à alterner
         const statuses = [
-            { name: `${totalMembers} membres 🤖`, type: ActivityType.Watching },
+            { name: `Surveille ${totalMembers} membres 🤖`, type: ActivityType.Custom },
+            { name: `${guilds} serveurs gérés`, type: ActivityType.Custom },
             { name: '/help pour commencer', type: ActivityType.Custom },
-            { name: 'son créateur, Shelby S.', type: ActivityType.Listening },
             { name: 'Site en développement..', type: ActivityType.Custom },
         ];
 
