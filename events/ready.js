@@ -25,26 +25,35 @@ module.exports = {
             console.error('[ready] Erreur backfill serverconfig:', err);
         }
 
-        const totalMembers = client.guilds.cache.reduce((acc, guild) => acc + guild.memberCount, 0);
-        const guilds = client.guilds.cache.size;
+        // 🟣 Phase de démarrage : statut "Se met à jour…"
+        client.user.setPresence({
+            activities: [{ type: ActivityType.Custom, name: 'Se met à jour…' }],
+            status: 'idle',
+        });
 
-        // Liste des statuts à alterner
-        const statuses = [
-            { name: `Surveille ${totalMembers} membres 🤖`, type: ActivityType.Custom },
-            { name: `${guilds} serveurs gérés`, type: ActivityType.Custom },
-            { name: '/help pour commencer', type: ActivityType.Custom },
-            { name: 'Site en développement..', type: ActivityType.Custom },
-        ];
+        // Après 20 secondes, démarrer la rotation de statuts
+        setTimeout(() => {
+            let i = 0;
 
-        let i = 0;
-        setInterval(() => {
-            const status = statuses[i];
-            client.user.setPresence({
-                activities: [status],
-                status: 'online', // Statut global : 'online' | 'idle' | 'dnd' | 'invisible'
-            });
-            i = (i + 1) % statuses.length; // Boucle sur les statuts
-        }, 10000); // Changement de statut toutes les 10 secondes
+            const updateStatus = () => {
+                const totalMembers = client.guilds.cache.reduce((acc, guild) => acc + guild.memberCount, 0);
+                const guilds = client.guilds.cache.size;
+
+                const statuses = [
+                    { name: `Surveille ${totalMembers} membres 🤖`, type: ActivityType.Custom },
+                    { name: `${guilds} serveurs gérés`, type: ActivityType.Custom },
+                    { name: '/help pour commencer', type: ActivityType.Custom },
+                    { name: 'Site en développement..', type: ActivityType.Custom },
+                ];
+
+                const status = statuses[i];
+                client.user.setPresence({ activities: [status], status: 'online' });
+                i = (i + 1) % statuses.length;
+            };
+
+            updateStatus();
+            setInterval(updateStatus, 10000);
+        }, 20_000); // délai avant rotation
 
         // Stockage des intervals en cours
         const intervals = new Map();
