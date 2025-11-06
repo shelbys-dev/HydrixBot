@@ -5,11 +5,34 @@ const { clearXpCache } = require('./messagecreate.js');
 // DB
 const db = require('../data/db');
 
+async function cleanupOldReports() {
+    try {
+        // 1) purge des signalements > 24h
+        await db.query(
+            `DELETE FROM users_reaction
+        WHERE created_at < DATE_SUB(NOW(), INTERVAL 24 HOUR)`
+        );
+
+        // 2) purge des reactioncounts orphelins
+        await db.query(
+            `DELETE rc
+         FROM reactioncounts rc
+    LEFT JOIN users_reaction ur ON ur.reactioncounts_id = rc.id
+        WHERE ur.id IS NULL`
+        );
+
+        console.log('🧹 Nettoyage signalements > 24h effectué');
+    } catch (e) {
+        console.error('Cleanup reports failed:', e);
+    }
+}
+
 module.exports = {
     name: 'clientReady', // Nom de l'événement
     once: false, // true si l'événement ne se déclenche qu'une fois
     async execute(client) {
         console.log(`✅ Bot connecté en tant que ${client.user.tag}`);
+        cleanupOldReports();
 
         try {
             const guildIds = client.guilds.cache.map(g => g.id);
