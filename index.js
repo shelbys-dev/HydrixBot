@@ -64,12 +64,7 @@ for (const file of eventFiles) {
     }
 }
 
-const { loadReactionCounts, saveReactionCounts } = require('./data/reactionCount.js');
-
 const { serverConfigs, loadConfigs, saveConfig } = require('./data/serverconfigs.js');
-
-// Charger les données au démarrage
-loadReactionCounts();
 
 // Charger les configurations des serveurs
 loadConfigs().then(configs => {
@@ -82,14 +77,12 @@ loadConfigs().then(configs => {
 
 process.on('SIGINT', () => {
     // Sauvegarder les données en cas de fermeture avec Ctrl + C
-    saveReactionCounts();
     saveConfig();
     process.exit();
 });
 
 process.on('exit', (code) => {
     console.log(`Processus terminé avec le code : ${code}. Sauvegarde des données avant de quitter.`);
-    saveReactionCounts();
     saveConfig();
 });
 
@@ -101,14 +94,14 @@ const app = express();
 const PORT = process.env.API_PORT || 3001;
 
 app.get('/api/stats', (req, res) => {
-  const totalGuilds = client.guilds.cache.size;
-  const totalMembers = client.guilds.cache.reduce((acc, guild) => acc + guild.memberCount, 0);
+    const totalGuilds = client.guilds.cache.size;
+    const totalMembers = client.guilds.cache.reduce((acc, guild) => acc + guild.memberCount, 0);
 
-  res.json({
-    guilds: totalGuilds,
-    members: totalMembers,
-    updatedAt: new Date().toISOString(),
-  });
+    res.json({
+        guilds: totalGuilds,
+        members: totalMembers,
+        updatedAt: new Date().toISOString(),
+    });
 });
 
 app.listen(PORT, () => console.log(`✅ API stats démarrée sur le port ${PORT}`));
