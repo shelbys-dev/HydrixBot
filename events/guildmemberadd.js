@@ -1,4 +1,3 @@
-// events/guildmemberadd.js
 const { EmbedBuilder } = require('discord.js');
 
 // DB
@@ -9,13 +8,6 @@ module.exports = {
     once: false,
 
     async execute(member) {
-        // 1) DM de bienvenue (non bloquant)
-        member.send(
-            `Salut ${member.user.username}, bienvenue dans **${member.guild.name}** ! Si tu as des questions, n’hésite pas à demander. 😊`
-        ).catch((error) => {
-            console.error(`Impossible d'envoyer un DM à ${member.user.tag} :`, error.message);
-        });
-
         // 2) Embed dans #logs si présent
         const logChannel = member.guild.channels.cache.find(
             (ch) => ch.name && ch.name.toLowerCase() === 'logs'
