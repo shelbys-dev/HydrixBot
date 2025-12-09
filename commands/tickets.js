@@ -89,7 +89,7 @@ module.exports = {
         }
 
         // -------- /ticket role set|clear --------
-        if (interaction.options.addSubcommandGroup() === 'role') {
+        if (interaction.options.getSubcommandGroup() === 'role') {
             const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.Administrator);
             if (!isAdmin) {
                 return interaction.reply({ content: "❌ Seuls les administrateurs peuvent modifier ce réglage.", ephemeral: true });
