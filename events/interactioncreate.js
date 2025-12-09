@@ -15,6 +15,22 @@ const {
 // DB
 const db = require('../data/db');
 
+async function getOrCreateServerConfigId(guildId) {
+    const [rows] = await db.query('SELECT id FROM serverconfig WHERE server_id = ? LIMIT 1', [guildId]);
+    if (rows.length) return rows[0].id;
+    const [res] = await db.query('INSERT INTO serverconfig (server_id) VALUES (?)', [guildId]);
+    return res.insertId;
+}
+async function getTicketRoleId(guildId) {
+    const [rows] = await db.query('SELECT ticket_role_id FROM serverconfig WHERE server_id = ? LIMIT 1', [guildId]);
+    if (!rows.length) return null;
+    return rows[0].ticket_role_id || null;
+}
+function memberHasTicketRole(member, roleId) {
+    if (!roleId) return false;
+    return member.roles?.cache?.has(roleId) || false;
+}
+
 const MAX_EMBED = 4096; // contrainte Discord pour description d'embed
 
 function splitForDiscord(text, max = MAX_EMBED) {
@@ -391,6 +407,10 @@ module.exports = {
                 // 2) Rôles admin
                 const adminRoles = guild.roles.cache.filter(r => r.permissions.has(PermissionFlagsBits.Administrator));
 
+                // 2.bis) Rôle staff tickets (si configuré)
+                const ticketRoleId = await getTicketRoleId(guild.id);
+                const ticketRole = ticketRoleId ? guild.roles.cache.get(ticketRoleId) : null;
+
                 // 3) Pré-insert DB (tickets) avec serverconfig_id
                 const serverconfigId = await getOrCreateServerConfigId(guild.id);
                 const now = new Date();
@@ -427,6 +447,21 @@ module.exports = {
                         ]
                     },
                 ];
+                // si un rôle staff est configuré et existe encore → accès
+                if (ticketRole) {
+                    permissionOverwrites.push({
+                        id: ticketRole.id,
+                        allow: [
+                            PermissionFlagsBits.ViewChannel,
+                            PermissionFlagsBits.SendMessages,
+                            PermissionFlagsBits.ReadMessageHistory,
+                            PermissionFlagsBits.AttachFiles,
+                            PermissionFlagsBits.EmbedLinks,
+                            PermissionFlagsBits.ManageMessages, // utile pour modérer dans le ticket
+                        ],
+                    });
+                }
+                // les administrateurs gardent l’accès (fallback & super-pouvoirs)
                 for (const role of adminRoles.values()) {
                     permissionOverwrites.push({
                         id: role.id,
@@ -490,10 +525,13 @@ module.exports = {
         // =========================
         if (interaction.isButton() && interaction.customId.startsWith('ticket_close:')) {
             const [_, channelId, ownerId] = interaction.customId.split(':');
+            const ticketRoleId = await getTicketRoleId(interaction.guild.id);
             const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.Administrator);
+            const isStaff = memberHasTicketRole(interaction.member, ticketRoleId);
             const isOwner = interaction.user.id === ownerId;
-            if (!isAdmin && !isOwner) {
-                return interaction.reply({ content: "❌ Seul l'initiateur du ticket ou un admin peut le fermer.", ephemeral: true });
+
+            if (!isAdmin && !isStaff && !isOwner) {
+                return interaction.reply({ content: "❌ Seul l'initiateur du ticket, le staff tickets, ou un administrateur peut le fermer.", ephemeral: true });
             }
 
             const channel = interaction.guild.channels.cache.get(channelId)
