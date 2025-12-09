@@ -63,10 +63,10 @@ module.exports = {
                 const guilds = client.guilds.cache.size;
 
                 const statuses = [
-                    { name: `Surveille ${totalMembers} membres 🤖`, type: ActivityType.Custom },
-                    { name: `${guilds} serveurs gérés`, type: ActivityType.Custom },
+                    { name: `Surveille ${totalMembers} membres 👥`, type: ActivityType.Custom },
+                    { name: `${guilds} serveurs gérés 🛜`, type: ActivityType.Custom },
                     { name: '/help pour commencer', type: ActivityType.Custom },
-                    { name: 'Site en développement..', type: ActivityType.Custom },
+                    { name: 'Nouveau site 🚀', type: ActivityType.Custom },
                 ];
 
                 const status = statuses[i];
