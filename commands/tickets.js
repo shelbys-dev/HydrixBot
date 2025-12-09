@@ -22,6 +22,22 @@ module.exports = {
         .addSubcommand(s =>
             s.setName('export')
                 .setDescription('Exporter le transcript Markdown d’un ticket (sélection interactive)')
+        )
+        .addSubcommandGroup(g =>
+            g.setName('role').setDescription('Configurer le rôle staff pour l’accès aux tickets')
+                .addSubcommand(s =>
+                    s.setName('set')
+                        .setDescription('Définir le rôle qui a accès aux tickets')
+                        .addRoleOption(o =>
+                            o.setName('role')
+                                .setDescription('Rôle staff tickets')
+                                .setRequired(true)
+                        )
+                )
+                .addSubcommand(s =>
+                    s.setName('clear')
+                        .setDescription('Supprimer le rôle staff tickets (fallback administrateurs)')
+                )
         ),
 
     async execute(interaction) {
@@ -70,6 +86,42 @@ module.exports = {
                     // placeholders; ils seront remplacés par l’event handler via editReply()
                 ],
             });
+        }
+
+        // -------- /ticket role set|clear --------
+        if (interaction.options.addSubcommandGroup() === 'role') {
+            const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.Administrator);
+            if (!isAdmin) {
+                return interaction.reply({ content: "❌ Seuls les administrateurs peuvent modifier ce réglage.", ephemeral: true });
+            }
+
+            await interaction.deferReply({ ephemeral: true });
+
+            // helper pour récupérer/insérer la config serveur
+            async function getOrCreateServerConfigId(guildId) {
+                const [rows] = await db.query('SELECT id FROM serverconfig WHERE server_id = ? LIMIT 1', [guildId]);
+                if (rows.length) return rows[0].id;
+                const [res] = await db.query('INSERT INTO serverconfig (server_id) VALUES (?)', [guildId]);
+                return res.insertId;
+            }
+
+            const serverconfigId = await getOrCreateServerConfigId(interaction.guild.id);
+
+            if (interaction.options.getSubcommand() === 'set') {
+                const role = interaction.options.getRole('role', true);
+                // vérification basique : rôle appartient à la guilde
+                if (role.guild.id !== interaction.guild.id) {
+                    return interaction.editReply('❌ Ce rôle n’appartient pas à ce serveur.');
+                }
+
+                await db.query('UPDATE serverconfig SET ticket_role_id = ? WHERE id = ?', [role.id, serverconfigId]);
+                return interaction.editReply(`✅ Le rôle **@${role.name}** a été défini comme **staff tickets**.\nLes nouveaux tickets seront visibles par ce rôle + les administrateurs.`);
+            }
+
+            if (interaction.options.getSubcommand() === 'clear') {
+                await db.query('UPDATE serverconfig SET ticket_role_id = NULL WHERE id = ?', [serverconfigId]);
+                return interaction.editReply('✅ Rôle staff tickets **supprimé**. Fallback : **administrateurs uniquement**.');
+            }
         }
     },
 };
